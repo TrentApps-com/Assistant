@@ -51,72 +51,112 @@
             <!-- Voice Avatar Circle with Waveform Canvas -->
             <div class="voice-avatar-container" id="voiceAvatarContainer">
                 <div class="voice-avatar-circle" id="voiceAvatarCircle">
-                    <!-- AI Avatar SVG - Futuristic Cloud Mesh Design -->
+                    <!-- AI Avatar SVG - HD Hexagonal Mesh Design -->
                     <div class="ai-avatar" id="aiAvatar">
-                        <svg viewBox="0 0 100 100" class="ai-avatar-svg">
+                        <svg viewBox="0 0 200 200" class="ai-avatar-svg">
                             <defs>
-                                <!-- Blur filter for soft cloud effect -->
-                                <filter id="cloudBlur" x="-50%" y="-50%" width="200%" height="200%">
-                                    <feGaussianBlur stdDeviation="3" result="blur"/>
-                                </filter>
-                                <filter id="meshGlow" x="-30%" y="-30%" width="160%" height="160%">
-                                    <feGaussianBlur stdDeviation="1.5" result="blur"/>
+                                <!-- Glow filter for nodes -->
+                                <filter id="nodeGlow" x="-100%" y="-100%" width="300%" height="300%">
+                                    <feGaussianBlur stdDeviation="2" result="blur"/>
                                     <feMerge>
                                         <feMergeNode in="blur"/>
                                         <feMergeNode in="SourceGraphic"/>
                                     </feMerge>
                                 </filter>
-                                <!-- Radial gradient for depth -->
-                                <radialGradient id="depthFade" cx="50%" cy="50%" r="50%">
+                                <!-- Soft glow for lines -->
+                                <filter id="lineGlow" x="-50%" y="-50%" width="200%" height="200%">
+                                    <feGaussianBlur stdDeviation="1" result="blur"/>
+                                    <feMerge>
+                                        <feMergeNode in="blur"/>
+                                        <feMergeNode in="SourceGraphic"/>
+                                    </feMerge>
+                                </filter>
+                                <!-- Radial fade mask -->
+                                <radialGradient id="hexFade" cx="50%" cy="50%" r="50%">
                                     <stop offset="0%" stop-color="white" stop-opacity="1"/>
+                                    <stop offset="70%" stop-color="white" stop-opacity="0.8"/>
                                     <stop offset="100%" stop-color="white" stop-opacity="0"/>
                                 </radialGradient>
-                                <mask id="circleMask">
-                                    <circle cx="50" cy="50" r="42" fill="url(#depthFade)"/>
+                                <mask id="hexMask">
+                                    <circle cx="100" cy="100" r="85" fill="url(#hexFade)"/>
                                 </mask>
+                                <!-- Gradient for center glow -->
+                                <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+                                    <stop offset="0%" stop-color="rgba(139,92,246,0.3)"/>
+                                    <stop offset="50%" stop-color="rgba(34,211,238,0.15)"/>
+                                    <stop offset="100%" stop-color="transparent"/>
+                                </radialGradient>
                             </defs>
 
-                            <!-- Cloud mesh layers -->
-                            <g class="cloud-mesh" mask="url(#circleMask)">
-                                <!-- Base cloud layer - soft blue/purple -->
-                                <g class="cloud-layer cloud-layer-1" filter="url(#cloudBlur)">
-                                    <ellipse class="cloud-blob" cx="30" cy="35" rx="20" ry="15"/>
-                                    <ellipse class="cloud-blob" cx="65" cy="40" rx="18" ry="14"/>
-                                    <ellipse class="cloud-blob" cx="45" cy="60" rx="22" ry="16"/>
+                            <!-- Background glow -->
+                            <circle class="hex-bg-glow" cx="100" cy="100" r="80" fill="url(#centerGlow)"/>
+
+                            <!-- Hexagonal mesh -->
+                            <g class="hex-mesh" mask="url(#hexMask)">
+                                <!-- Hex grid lines - Layer 1 (outer) -->
+                                <g class="hex-lines hex-layer-1" filter="url(#lineGlow)">
+                                    <!-- Row 1 -->
+                                    <path class="hex-line" d="M60,30 L80,30 L90,47 L80,64 L60,64 L50,47 Z"/>
+                                    <path class="hex-line" d="M100,30 L120,30 L130,47 L120,64 L100,64 L90,47 Z"/>
+                                    <path class="hex-line" d="M140,30 L160,30 L170,47 L160,64 L140,64 L130,47 Z"/>
+                                    <!-- Row 2 -->
+                                    <path class="hex-line" d="M40,64 L60,64 L70,81 L60,98 L40,98 L30,81 Z"/>
+                                    <path class="hex-line" d="M80,64 L100,64 L110,81 L100,98 L80,98 L70,81 Z"/>
+                                    <path class="hex-line" d="M120,64 L140,64 L150,81 L140,98 L120,98 L110,81 Z"/>
+                                    <path class="hex-line" d="M160,64 L180,64 L190,81 L180,98 L160,98 L150,81 Z"/>
+                                    <!-- Row 3 (center) -->
+                                    <path class="hex-line" d="M20,98 L40,98 L50,115 L40,132 L20,132 L10,115 Z"/>
+                                    <path class="hex-line" d="M60,98 L80,98 L90,115 L80,132 L60,132 L50,115 Z"/>
+                                    <path class="hex-line hex-center" d="M100,98 L120,98 L130,115 L120,132 L100,132 L90,115 Z"/>
+                                    <path class="hex-line" d="M140,98 L160,98 L170,115 L160,132 L140,132 L130,115 Z"/>
+                                    <path class="hex-line" d="M180,98 L200,98 L210,115 L200,132 L180,132 L170,115 Z"/>
+                                    <!-- Row 4 -->
+                                    <path class="hex-line" d="M40,132 L60,132 L70,149 L60,166 L40,166 L30,149 Z"/>
+                                    <path class="hex-line" d="M80,132 L100,132 L110,149 L100,166 L80,166 L70,149 Z"/>
+                                    <path class="hex-line" d="M120,132 L140,132 L150,149 L140,166 L120,166 L110,149 Z"/>
+                                    <path class="hex-line" d="M160,132 L180,132 L190,149 L180,166 L160,166 L150,149 Z"/>
+                                    <!-- Row 5 -->
+                                    <path class="hex-line" d="M60,166 L80,166 L90,183 L80,200 L60,200 L50,183 Z"/>
+                                    <path class="hex-line" d="M100,166 L120,166 L130,183 L120,200 L100,200 L90,183 Z"/>
+                                    <path class="hex-line" d="M140,166 L160,166 L170,183 L160,200 L140,200 L130,183 Z"/>
                                 </g>
 
-                                <!-- Mid cloud layer - cyan/teal -->
-                                <g class="cloud-layer cloud-layer-2" filter="url(#cloudBlur)">
-                                    <ellipse class="cloud-blob" cx="55" cy="30" rx="16" ry="12"/>
-                                    <ellipse class="cloud-blob" cx="35" cy="55" rx="18" ry="13"/>
-                                    <ellipse class="cloud-blob" cx="70" cy="60" rx="15" ry="11"/>
+                                <!-- Hex nodes at vertices -->
+                                <g class="hex-nodes" filter="url(#nodeGlow)">
+                                    <!-- Center cluster -->
+                                    <circle class="hex-node node-1" cx="100" cy="98" r="3"/>
+                                    <circle class="hex-node node-2" cx="120" cy="98" r="2.5"/>
+                                    <circle class="hex-node node-3" cx="130" cy="115" r="3"/>
+                                    <circle class="hex-node node-4" cx="120" cy="132" r="2.5"/>
+                                    <circle class="hex-node node-5" cx="100" cy="132" r="3"/>
+                                    <circle class="hex-node node-6" cx="90" cy="115" r="2.5"/>
+                                    <!-- Inner ring -->
+                                    <circle class="hex-node node-7" cx="80" cy="98" r="2"/>
+                                    <circle class="hex-node node-8" cx="110" cy="81" r="2"/>
+                                    <circle class="hex-node node-9" cx="140" cy="98" r="2"/>
+                                    <circle class="hex-node node-10" cx="140" cy="132" r="2"/>
+                                    <circle class="hex-node node-11" cx="110" cy="149" r="2"/>
+                                    <circle class="hex-node node-12" cx="80" cy="132" r="2"/>
+                                    <!-- Outer nodes -->
+                                    <circle class="hex-node node-13" cx="70" cy="81" r="1.5"/>
+                                    <circle class="hex-node node-14" cx="90" cy="47" r="1.5"/>
+                                    <circle class="hex-node node-15" cx="130" cy="47" r="1.5"/>
+                                    <circle class="hex-node node-16" cx="150" cy="81" r="1.5"/>
+                                    <circle class="hex-node node-17" cx="170" cy="115" r="1.5"/>
+                                    <circle class="hex-node node-18" cx="150" cy="149" r="1.5"/>
+                                    <circle class="hex-node node-19" cx="130" cy="183" r="1.5"/>
+                                    <circle class="hex-node node-20" cx="90" cy="183" r="1.5"/>
+                                    <circle class="hex-node node-21" cx="70" cy="149" r="1.5"/>
+                                    <circle class="hex-node node-22" cx="50" cy="115" r="1.5"/>
                                 </g>
 
-                                <!-- Top cloud layer - pink/coral -->
-                                <g class="cloud-layer cloud-layer-3" filter="url(#cloudBlur)">
-                                    <ellipse class="cloud-blob" cx="40" cy="45" rx="14" ry="10"/>
-                                    <ellipse class="cloud-blob" cx="60" cy="50" rx="12" ry="9"/>
-                                    <ellipse class="cloud-blob" cx="50" cy="35" rx="10" ry="8"/>
-                                </g>
-
-                                <!-- Mesh lines - subtle connecting lines -->
-                                <g class="mesh-lines" filter="url(#meshGlow)">
-                                    <path class="mesh-line mesh-line-1" d="M25,30 Q50,45 75,35"/>
-                                    <path class="mesh-line mesh-line-2" d="M20,50 Q45,40 70,55"/>
-                                    <path class="mesh-line mesh-line-3" d="M30,65 Q55,50 80,60"/>
-                                    <path class="mesh-line mesh-line-4" d="M35,25 Q50,55 65,70"/>
-                                    <path class="mesh-line mesh-line-5" d="M20,40 Q50,60 80,45"/>
-                                </g>
-
-                                <!-- Floating particles -->
-                                <g class="mesh-particles">
-                                    <circle class="particle particle-1" cx="25" cy="30" r="2"/>
-                                    <circle class="particle particle-2" cx="75" cy="35" r="1.5"/>
-                                    <circle class="particle particle-3" cx="40" cy="55" r="2"/>
-                                    <circle class="particle particle-4" cx="60" cy="45" r="1.8"/>
-                                    <circle class="particle particle-5" cx="50" cy="65" r="1.5"/>
-                                    <circle class="particle particle-6" cx="30" cy="45" r="1.2"/>
-                                    <circle class="particle particle-7" cx="70" cy="55" r="1.6"/>
+                                <!-- Energy pulses along paths -->
+                                <g class="hex-pulses">
+                                    <circle class="pulse pulse-1" cx="100" cy="115" r="1.5"/>
+                                    <circle class="pulse pulse-2" cx="115" cy="98" r="1.2"/>
+                                    <circle class="pulse pulse-3" cx="115" cy="132" r="1.2"/>
+                                    <circle class="pulse pulse-4" cx="85" cy="98" r="1"/>
+                                    <circle class="pulse pulse-5" cx="85" cy="132" r="1"/>
                                 </g>
                             </g>
                         </svg>

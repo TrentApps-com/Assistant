@@ -84,16 +84,16 @@ body {
     opacity: 0.8;
 }
 
-/* AI Avatar - Futuristic Cloud Mesh Design */
+/* AI Avatar - HD Hexagonal Mesh Design */
 .ai-avatar {
     position: absolute;
-    width: 90%;
-    height: 90%;
+    width: 92%;
+    height: 92%;
     z-index: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0.85;
+    opacity: 0.9;
     transition: opacity 0.3s ease;
 }
 
@@ -103,185 +103,223 @@ body {
     overflow: visible;
 }
 
-/* ===== CLOUD LAYERS ===== */
-.cloud-layer-1 .cloud-blob {
-    fill: rgba(139, 92, 246, 0.4);
-    animation: cloud-drift-1 8s ease-in-out infinite;
+/* ===== BACKGROUND GLOW ===== */
+.hex-bg-glow {
+    animation: bg-pulse 4s ease-in-out infinite;
 }
 
-.cloud-layer-2 .cloud-blob {
-    fill: rgba(34, 211, 238, 0.35);
-    animation: cloud-drift-2 10s ease-in-out infinite;
+@keyframes bg-pulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.02); }
 }
 
-.cloud-layer-3 .cloud-blob {
-    fill: rgba(251, 146, 60, 0.3);
-    animation: cloud-drift-3 12s ease-in-out infinite;
-}
-
-/* ===== MESH LINES ===== */
-.mesh-line {
+/* ===== HEX LINES ===== */
+.hex-line {
     fill: none;
-    stroke: rgba(255, 255, 255, 0.15);
-    stroke-width: 0.5;
-    stroke-linecap: round;
+    stroke: rgba(139, 92, 246, 0.35);
+    stroke-width: 0.8;
+    stroke-linejoin: round;
+    transition: all 0.3s ease;
 }
 
-.mesh-line-1 { animation: mesh-pulse 4s ease-in-out infinite; }
-.mesh-line-2 { animation: mesh-pulse 4s ease-in-out infinite 0.5s; }
-.mesh-line-3 { animation: mesh-pulse 4s ease-in-out infinite 1s; }
-.mesh-line-4 { animation: mesh-pulse 4s ease-in-out infinite 1.5s; }
-.mesh-line-5 { animation: mesh-pulse 4s ease-in-out infinite 2s; }
+.hex-line:nth-child(odd) {
+    stroke: rgba(34, 211, 238, 0.3);
+    animation: hex-shimmer 5s ease-in-out infinite;
+}
 
-/* ===== PARTICLES ===== */
-.particle {
+.hex-line:nth-child(even) {
+    stroke: rgba(236, 72, 153, 0.25);
+    animation: hex-shimmer 5s ease-in-out infinite 0.5s;
+}
+
+.hex-line:nth-child(3n) {
+    stroke: rgba(251, 146, 60, 0.28);
+    animation: hex-shimmer 5s ease-in-out infinite 1s;
+}
+
+.hex-center {
+    stroke: rgba(139, 92, 246, 0.5) !important;
+    stroke-width: 1.2;
+    animation: hex-center-pulse 3s ease-in-out infinite !important;
+}
+
+@keyframes hex-shimmer {
+    0%, 100% { stroke-opacity: 0.3; stroke-width: 0.8; }
+    50% { stroke-opacity: 0.5; stroke-width: 1; }
+}
+
+@keyframes hex-center-pulse {
+    0%, 100% { stroke-opacity: 0.5; stroke-width: 1.2; }
+    50% { stroke-opacity: 0.8; stroke-width: 1.5; }
+}
+
+/* ===== HEX NODES ===== */
+.hex-node {
+    fill: rgba(255, 255, 255, 0.9);
+    transition: all 0.3s ease;
+}
+
+/* Center nodes - multicolor */
+.node-1 { fill: rgba(139, 92, 246, 0.95); animation: node-glow 3s ease-in-out infinite; }
+.node-2 { fill: rgba(34, 211, 238, 0.9); animation: node-glow 3s ease-in-out infinite 0.3s; }
+.node-3 { fill: rgba(236, 72, 153, 0.95); animation: node-glow 3s ease-in-out infinite 0.6s; }
+.node-4 { fill: rgba(251, 146, 60, 0.9); animation: node-glow 3s ease-in-out infinite 0.9s; }
+.node-5 { fill: rgba(52, 211, 153, 0.95); animation: node-glow 3s ease-in-out infinite 1.2s; }
+.node-6 { fill: rgba(96, 165, 250, 0.9); animation: node-glow 3s ease-in-out infinite 1.5s; }
+
+/* Inner ring nodes */
+.node-7, .node-8, .node-9, .node-10, .node-11, .node-12 {
+    fill: rgba(167, 139, 250, 0.8);
+    animation: node-pulse 4s ease-in-out infinite;
+}
+.node-8 { animation-delay: 0.4s; fill: rgba(34, 211, 238, 0.8); }
+.node-9 { animation-delay: 0.8s; fill: rgba(251, 146, 60, 0.8); }
+.node-10 { animation-delay: 1.2s; fill: rgba(236, 72, 153, 0.8); }
+.node-11 { animation-delay: 1.6s; fill: rgba(52, 211, 153, 0.8); }
+.node-12 { animation-delay: 2s; fill: rgba(96, 165, 250, 0.8); }
+
+/* Outer nodes */
+.node-13, .node-14, .node-15, .node-16, .node-17, .node-18, .node-19, .node-20, .node-21, .node-22 {
     fill: rgba(255, 255, 255, 0.6);
-    animation: particle-float 5s ease-in-out infinite;
+    animation: node-twinkle 6s ease-in-out infinite;
+}
+.node-14 { animation-delay: 0.5s; }
+.node-15 { animation-delay: 1s; }
+.node-16 { animation-delay: 1.5s; }
+.node-17 { animation-delay: 2s; }
+.node-18 { animation-delay: 2.5s; }
+.node-19 { animation-delay: 3s; }
+.node-20 { animation-delay: 3.5s; }
+.node-21 { animation-delay: 4s; }
+.node-22 { animation-delay: 4.5s; }
+
+@keyframes node-glow {
+    0%, 100% { opacity: 0.9; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.3); }
 }
 
-.particle-1 { fill: rgba(139, 92, 246, 0.8); animation-delay: 0s; }
-.particle-2 { fill: rgba(34, 211, 238, 0.8); animation-delay: 0.7s; }
-.particle-3 { fill: rgba(251, 146, 60, 0.8); animation-delay: 1.4s; }
-.particle-4 { fill: rgba(96, 165, 250, 0.8); animation-delay: 2.1s; }
-.particle-5 { fill: rgba(236, 72, 153, 0.8); animation-delay: 2.8s; }
-.particle-6 { fill: rgba(167, 139, 250, 0.8); animation-delay: 3.5s; }
-.particle-7 { fill: rgba(52, 211, 153, 0.8); animation-delay: 4.2s; }
-
-/* ===== BASE ANIMATIONS ===== */
-@keyframes cloud-drift-1 {
-    0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.4; }
-    50% { transform: translate(3px, -2px) scale(1.05); opacity: 0.5; }
+@keyframes node-pulse {
+    0%, 100% { opacity: 0.7; transform: scale(1); }
+    50% { opacity: 0.95; transform: scale(1.2); }
 }
 
-@keyframes cloud-drift-2 {
-    0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.35; }
-    50% { transform: translate(-4px, 2px) scale(1.08); opacity: 0.45; }
+@keyframes node-twinkle {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 0.9; }
 }
 
-@keyframes cloud-drift-3 {
-    0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.3; }
-    50% { transform: translate(2px, 3px) scale(1.1); opacity: 0.4; }
+/* ===== ENERGY PULSES ===== */
+.pulse {
+    fill: rgba(255, 255, 255, 0.9);
+    animation: pulse-travel 2s ease-in-out infinite;
 }
 
-@keyframes mesh-pulse {
-    0%, 100% { stroke-opacity: 0.15; stroke-width: 0.5; }
-    50% { stroke-opacity: 0.35; stroke-width: 0.8; }
+.pulse-1 { fill: rgba(139, 92, 246, 1); animation-delay: 0s; }
+.pulse-2 { fill: rgba(34, 211, 238, 1); animation-delay: 0.4s; }
+.pulse-3 { fill: rgba(251, 146, 60, 1); animation-delay: 0.8s; }
+.pulse-4 { fill: rgba(236, 72, 153, 1); animation-delay: 1.2s; }
+.pulse-5 { fill: rgba(52, 211, 153, 1); animation-delay: 1.6s; }
+
+@keyframes pulse-travel {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.5); }
 }
 
-@keyframes particle-float {
-    0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.6; }
-    25% { transform: translate(2px, -3px) scale(1.2); opacity: 0.9; }
-    50% { transform: translate(-1px, -5px) scale(1); opacity: 0.7; }
-    75% { transform: translate(-3px, -2px) scale(1.3); opacity: 1; }
-}
-
-/* ===== LISTENING STATE - Enhanced Blue ===== */
+/* ===== LISTENING STATE - Blue Focus ===== */
 .voice-avatar-container.listening .ai-avatar {
     opacity: 1;
 }
 
-.voice-avatar-container.listening .cloud-layer-1 .cloud-blob {
-    fill: rgba(96, 165, 250, 0.5);
-    animation: cloud-listen-1 4s ease-in-out infinite;
+.voice-avatar-container.listening .hex-line {
+    stroke: rgba(96, 165, 250, 0.5);
+    animation: hex-listen 2s ease-in-out infinite;
 }
 
-.voice-avatar-container.listening .cloud-layer-2 .cloud-blob {
-    fill: rgba(59, 130, 246, 0.45);
-    animation: cloud-listen-2 5s ease-in-out infinite;
+.voice-avatar-container.listening .hex-center {
+    stroke: rgba(59, 130, 246, 0.7) !important;
+    stroke-width: 1.5;
 }
 
-.voice-avatar-container.listening .cloud-layer-3 .cloud-blob {
-    fill: rgba(147, 197, 253, 0.4);
-    animation: cloud-listen-3 6s ease-in-out infinite;
+.voice-avatar-container.listening .hex-node {
+    fill: rgba(96, 165, 250, 0.95);
+    animation: node-listen 1.5s ease-in-out infinite;
 }
 
-.voice-avatar-container.listening .mesh-line {
-    stroke: rgba(96, 165, 250, 0.4);
-    animation: mesh-listen 2s ease-in-out infinite;
+.voice-avatar-container.listening .pulse {
+    fill: rgba(96, 165, 250, 1);
+    animation: pulse-listen 1s ease-in-out infinite;
 }
 
-.voice-avatar-container.listening .particle {
-    fill: rgba(96, 165, 250, 0.9);
-    animation: particle-listen 2s ease-in-out infinite;
+.voice-avatar-container.listening .hex-bg-glow {
+    animation: bg-listen 2s ease-in-out infinite;
 }
 
-@keyframes cloud-listen-1 {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    50% { transform: translate(4px, -3px) scale(1.1); }
+@keyframes hex-listen {
+    0%, 100% { stroke-opacity: 0.4; stroke-width: 1; }
+    50% { stroke-opacity: 0.7; stroke-width: 1.3; }
 }
 
-@keyframes cloud-listen-2 {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    50% { transform: translate(-5px, 3px) scale(1.12); }
+@keyframes node-listen {
+    0%, 100% { opacity: 0.8; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.4); }
 }
 
-@keyframes cloud-listen-3 {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    50% { transform: translate(3px, 4px) scale(1.15); }
+@keyframes pulse-listen {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(2); }
 }
 
-@keyframes mesh-listen {
-    0%, 100% { stroke-opacity: 0.3; stroke-width: 0.6; }
-    50% { stroke-opacity: 0.6; stroke-width: 1; }
+@keyframes bg-listen {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 0.9; }
 }
 
-@keyframes particle-listen {
-    0%, 100% { transform: scale(1); opacity: 0.7; }
-    50% { transform: scale(1.5); opacity: 1; }
-}
-
-/* ===== SPEAKING STATE - Warm Multicolor ===== */
+/* ===== SPEAKING STATE - Warm Energy ===== */
 .voice-avatar-container.speaking .ai-avatar {
     opacity: 1;
 }
 
-.voice-avatar-container.speaking .cloud-layer-1 .cloud-blob {
-    fill: rgba(251, 146, 60, 0.55);
-    animation: cloud-speak-1 2s ease-in-out infinite;
+.voice-avatar-container.speaking .hex-line {
+    animation: hex-speak 0.6s ease-in-out infinite;
 }
 
-.voice-avatar-container.speaking .cloud-layer-2 .cloud-blob {
-    fill: rgba(236, 72, 153, 0.5);
-    animation: cloud-speak-2 2.5s ease-in-out infinite;
+.voice-avatar-container.speaking .hex-line:nth-child(odd) {
+    stroke: rgba(251, 146, 60, 0.6);
 }
 
-.voice-avatar-container.speaking .cloud-layer-3 .cloud-blob {
-    fill: rgba(253, 224, 71, 0.4);
-    animation: cloud-speak-3 3s ease-in-out infinite;
+.voice-avatar-container.speaking .hex-line:nth-child(even) {
+    stroke: rgba(236, 72, 153, 0.55);
 }
 
-.voice-avatar-container.speaking .mesh-line {
-    stroke: rgba(251, 146, 60, 0.5);
-    animation: mesh-speak 0.8s ease-in-out infinite;
+.voice-avatar-container.speaking .hex-line:nth-child(3n) {
+    stroke: rgba(253, 224, 71, 0.5);
 }
 
-.voice-avatar-container.speaking .particle {
-    animation: particle-speak 0.6s ease-in-out infinite;
+.voice-avatar-container.speaking .hex-center {
+    stroke: rgba(251, 146, 60, 0.8) !important;
 }
 
-@keyframes cloud-speak-1 {
-    0%, 100% { transform: translate(0, 0) scale(1); fill: rgba(251, 146, 60, 0.55); }
-    50% { transform: translate(5px, -4px) scale(1.15); fill: rgba(236, 72, 153, 0.6); }
+.voice-avatar-container.speaking .hex-node {
+    animation: node-speak 0.5s ease-in-out infinite;
 }
 
-@keyframes cloud-speak-2 {
-    0%, 100% { transform: translate(0, 0) scale(1); fill: rgba(236, 72, 153, 0.5); }
-    50% { transform: translate(-6px, 4px) scale(1.18); fill: rgba(253, 224, 71, 0.55); }
+.voice-avatar-container.speaking .pulse {
+    animation: pulse-speak 0.4s ease-in-out infinite;
 }
 
-@keyframes cloud-speak-3 {
-    0%, 100% { transform: translate(0, 0) scale(1); fill: rgba(253, 224, 71, 0.4); }
-    50% { transform: translate(4px, 5px) scale(1.2); fill: rgba(251, 146, 60, 0.5); }
+@keyframes hex-speak {
+    0%, 100% { stroke-opacity: 0.5; stroke-width: 1; }
+    50% { stroke-opacity: 0.85; stroke-width: 1.5; }
 }
 
-@keyframes mesh-speak {
-    0%, 100% { stroke-opacity: 0.4; stroke-width: 0.8; }
-    50% { stroke-opacity: 0.8; stroke-width: 1.2; }
+@keyframes node-speak {
+    0%, 100% { opacity: 0.85; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.5); }
 }
 
-@keyframes particle-speak {
-    0%, 100% { transform: scale(1); opacity: 0.8; }
-    50% { transform: scale(1.8); opacity: 1; }
+@keyframes pulse-speak {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(2.2); }
 }
 
 /* ===== THINKING STATE - Color Cycling ===== */
@@ -289,43 +327,35 @@ body {
     opacity: 1;
 }
 
-.voice-avatar-container.thinking .cloud-layer-1 .cloud-blob {
-    animation: cloud-think-cycle 6s ease-in-out infinite;
+.voice-avatar-container.thinking .hex-line {
+    animation: hex-think 4s ease-in-out infinite;
 }
 
-.voice-avatar-container.thinking .cloud-layer-2 .cloud-blob {
-    animation: cloud-think-cycle 6s ease-in-out infinite 2s;
+.voice-avatar-container.thinking .hex-node {
+    animation: node-think 3s ease-in-out infinite;
 }
 
-.voice-avatar-container.thinking .cloud-layer-3 .cloud-blob {
-    animation: cloud-think-cycle 6s ease-in-out infinite 4s;
+.voice-avatar-container.thinking .pulse {
+    animation: pulse-think 2.5s ease-in-out infinite;
 }
 
-.voice-avatar-container.thinking .mesh-line {
-    animation: mesh-think 3s ease-in-out infinite;
+@keyframes hex-think {
+    0%, 100% { stroke: rgba(139, 92, 246, 0.5); stroke-opacity: 0.5; }
+    33% { stroke: rgba(34, 211, 238, 0.55); stroke-opacity: 0.6; }
+    66% { stroke: rgba(251, 146, 60, 0.5); stroke-opacity: 0.55; }
 }
 
-.voice-avatar-container.thinking .particle {
-    animation: particle-think 4s ease-in-out infinite;
+@keyframes node-think {
+    0%, 100% { fill: rgba(139, 92, 246, 0.9); transform: scale(1); }
+    25% { fill: rgba(34, 211, 238, 0.95); transform: scale(1.2); }
+    50% { fill: rgba(251, 146, 60, 0.9); transform: scale(1.1); }
+    75% { fill: rgba(236, 72, 153, 0.95); transform: scale(1.25); }
 }
 
-@keyframes cloud-think-cycle {
-    0%, 100% { fill: rgba(139, 92, 246, 0.5); transform: translate(0, 0) scale(1); }
-    33% { fill: rgba(34, 211, 238, 0.5); transform: translate(3px, -2px) scale(1.08); }
-    66% { fill: rgba(251, 146, 60, 0.45); transform: translate(-2px, 3px) scale(1.05); }
-}
-
-@keyframes mesh-think {
-    0%, 100% { stroke: rgba(139, 92, 246, 0.4); stroke-opacity: 0.4; }
-    33% { stroke: rgba(34, 211, 238, 0.5); stroke-opacity: 0.5; }
-    66% { stroke: rgba(251, 146, 60, 0.4); stroke-opacity: 0.4; }
-}
-
-@keyframes particle-think {
-    0%, 100% { fill: rgba(139, 92, 246, 0.8); transform: translate(0, 0) scale(1); }
-    25% { fill: rgba(34, 211, 238, 0.9); transform: translate(2px, -3px) scale(1.3); }
-    50% { fill: rgba(251, 146, 60, 0.8); transform: translate(-2px, -4px) scale(1.1); }
-    75% { fill: rgba(236, 72, 153, 0.9); transform: translate(-3px, -1px) scale(1.4); }
+@keyframes pulse-think {
+    0%, 100% { fill: rgba(139, 92, 246, 1); opacity: 0.7; }
+    33% { fill: rgba(34, 211, 238, 1); opacity: 0.9; }
+    66% { fill: rgba(251, 146, 60, 1); opacity: 0.8; }
 }
 
 /* Idle state - Soft lavender glow */
