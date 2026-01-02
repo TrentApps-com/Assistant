@@ -234,6 +234,15 @@ def health_check():
 
 
 if __name__ == '__main__':
+    import ssl
+
+    # Check for SSL certificates
+    cert_path = os.path.join(os.path.dirname(__file__), 'certs', 'cert.pem')
+    key_path = os.path.join(os.path.dirname(__file__), 'certs', 'key.pem')
+    use_https = os.path.exists(cert_path) and os.path.exists(key_path)
+
+    protocol = 'https' if use_https else 'http'
+
     print(f"""
     ╔══════════════════════════════════════════════════════╗
     ║         Solo Voice Assistant Starting...             ║
@@ -242,6 +251,13 @@ if __name__ == '__main__':
     ║  Ollama Model: {OLLAMA_MODEL:<37} ║
     ║  Kokoro URL:  {KOKORO_URL:<38} ║
     ║  Kokoro Voice: {KOKORO_VOICE:<37} ║
+    ║  HTTPS:       {('Enabled' if use_https else 'Disabled'):<38} ║
     ╚══════════════════════════════════════════════════════╝
     """)
-    app.run(host='0.0.0.0', port=5566, debug=True)
+
+    if use_https:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert_path, key_path)
+        app.run(host='0.0.0.0', port=5566, debug=True, ssl_context=context)
+    else:
+        app.run(host='0.0.0.0', port=5566, debug=True)

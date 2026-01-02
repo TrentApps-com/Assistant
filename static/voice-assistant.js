@@ -6,24 +6,18 @@
 class VoiceAssistant {
     constructor() {
         // DOM Elements
-        this.voiceBtn = document.getElementById('voiceBtn');
-        this.voiceBtnLabel = document.getElementById('voiceBtnLabel');
-        this.statusIndicator = document.getElementById('statusIndicator');
+        this.voiceCircle = document.getElementById('voiceCircle');
         this.statusText = document.getElementById('statusText');
-        this.transcriptText = document.getElementById('transcriptText');
-        this.responseText = document.getElementById('responseText');
-        this.audioCanvas = document.getElementById('audioCanvas');
-        this.settingsToggle = document.getElementById('settingsToggle');
-        this.settingsContent = document.getElementById('settingsContent');
+        this.displayContent = document.getElementById('displayContent');
+        this.settingsBtn = document.getElementById('settingsBtn');
+        this.settingsPanel = document.getElementById('settingsPanel');
+        this.closeSettings = document.getElementById('closeSettings');
         this.voiceSelect = document.getElementById('voiceSelect');
         this.modelSelect = document.getElementById('modelSelect');
         this.speedRange = document.getElementById('speedRange');
         this.speedValue = document.getElementById('speedValue');
         this.ollamaStatus = document.getElementById('ollamaStatus');
         this.kokoroStatus = document.getElementById('kokoroStatus');
-
-        // Canvas context for visualization
-        this.canvasCtx = this.audioCanvas.getContext('2d');
 
         // State
         this.isListening = false;
@@ -33,7 +27,6 @@ class VoiceAssistant {
         this.audioContext = null;
         this.analyser = null;
         this.mediaStream = null;
-        this.animationId = null;
         this.currentAudio = null;
         this.conversationHistory = [];
 
@@ -41,12 +34,10 @@ class VoiceAssistant {
         this.interimTranscript = '';
         this.finalTranscript = '';
         this.silenceTimer = null;
-        this.lastSpeechTime = null;
 
         // Configuration
         this.config = {
             silenceThreshold: 2000,
-            minSpeechLength: 500,
             selectedVoice: 'af_heart',
             selectedModel: 'llama3.2:latest',
             speechSpeed: 1.0
@@ -58,22 +49,23 @@ class VoiceAssistant {
 
     async init() {
         // Set up event listeners
-        this.voiceBtn.addEventListener('click', () => this.toggleListening());
-        this.settingsToggle.addEventListener('click', () => this.toggleSettings());
+        this.voiceCircle.addEventListener('click', () => this.toggleListening());
+        this.settingsBtn.addEventListener('click', () => this.openSettings());
+        this.closeSettings.addEventListener('click', () => this.closeSettingsPanel());
         this.speedRange.addEventListener('input', (e) => this.updateSpeed(e.target.value));
+
+        // Close settings when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!this.settingsPanel.contains(e.target) && !this.settingsBtn.contains(e.target)) {
+                this.closeSettingsPanel();
+            }
+        });
 
         // Load settings
         await this.loadSettings();
 
         // Check service health
         await this.checkHealth();
-
-        // Resize canvas
-        this.resizeCanvas();
-        window.addEventListener('resize', () => this.resizeCanvas());
-
-        // Start idle animation
-        this.drawIdleVisualization();
     }
 
     async loadSettings() {
@@ -97,12 +89,10 @@ class VoiceAssistant {
     }
 
     populateVoices(voices) {
-        // Clear existing options
         while (this.voiceSelect.firstChild) {
             this.voiceSelect.removeChild(this.voiceSelect.firstChild);
         }
 
-        // Group voices by type
         const groups = {
             'American Female': voices.filter(v => v.startsWith('af_')),
             'American Male': voices.filter(v => v.startsWith('am_')),
@@ -136,7 +126,6 @@ class VoiceAssistant {
     }
 
     populateModels(models) {
-        // Clear existing options
         while (this.modelSelect.firstChild) {
             this.modelSelect.removeChild(this.modelSelect.firstChild);
         }
@@ -166,8 +155,14 @@ class VoiceAssistant {
         this.speedValue.textContent = `${value}x`;
     }
 
-    toggleSettings() {
-        this.settingsContent.classList.toggle('open');
+    openSettings() {
+        this.settingsPanel.classList.add('open');
+        this.settingsBtn.style.display = 'none';
+    }
+
+    closeSettingsPanel() {
+        this.settingsPanel.classList.remove('open');
+        this.settingsBtn.style.display = 'flex';
     }
 
     async checkHealth() {
@@ -175,19 +170,13 @@ class VoiceAssistant {
             const res = await fetch('/api/health');
             const data = await res.json();
 
-            this.ollamaStatus.className = 'service-dot ' +
+            this.ollamaStatus.className = 'status-dot ' +
                 (data.services.ollama === 'healthy' ? 'healthy' : 'unhealthy');
-            this.kokoroStatus.className = 'service-dot ' +
+            this.kokoroStatus.className = 'status-dot ' +
                 (data.services.kokoro === 'healthy' ? 'healthy' : 'unhealthy');
         } catch (error) {
             console.error('Health check failed:', error);
         }
-    }
-
-    resizeCanvas() {
-        const rect = this.audioCanvas.parentElement.getBoundingClientRect();
-        this.audioCanvas.width = rect.width - 48; // Account for padding
-        this.audioCanvas.height = 150;
     }
 
     async toggleListening() {
@@ -200,23 +189,25 @@ class VoiceAssistant {
 
     async startListening() {
         try {
-            // Check for speech recognition support
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
-                this.showError('Speech recognition not supported in this browser');
+                this.showError('Speech recognition not supported');
                 return;
             }
 
             // Request microphone access
             this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-            // Set up audio context for visualization
+            // Set up audio context for level monitoring
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = 256;
 
             const source = this.audioContext.createMediaStreamSource(this.mediaStream);
             source.connect(this.analyser);
+
+            // Start audio level monitoring
+            this.monitorAudioLevel();
 
             // Set up speech recognition
             this.recognition = new SpeechRecognition();
@@ -226,10 +217,7 @@ class VoiceAssistant {
 
             this.recognition.onstart = () => {
                 this.isListening = true;
-                this.updateStatus('listening', 'Listening...');
-                this.voiceBtn.classList.add('listening');
-                this.voiceBtnLabel.textContent = 'Tap to stop';
-                this.startVisualization();
+                this.updateUI('listening');
             };
 
             this.recognition.onresult = (event) => this.handleSpeechResult(event);
@@ -244,6 +232,29 @@ class VoiceAssistant {
             console.error('Failed to start listening:', error);
             this.showError('Microphone access denied');
         }
+    }
+
+    monitorAudioLevel() {
+        if (!this.analyser || !this.isListening) return;
+
+        const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+        this.analyser.getByteFrequencyData(dataArray);
+
+        // Calculate RMS
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i] * dataArray[i];
+        }
+        const rms = Math.sqrt(sum / dataArray.length) / 255;
+
+        // Update has-audio class based on audio level
+        if (rms > 0.05) {
+            this.voiceCircle.classList.add('has-audio');
+        } else {
+            this.voiceCircle.classList.remove('has-audio');
+        }
+
+        requestAnimationFrame(() => this.monitorAudioLevel());
     }
 
     async stopListening() {
@@ -270,12 +281,10 @@ class VoiceAssistant {
             this.silenceTimer = null;
         }
 
-        this.stopVisualization();
-        this.voiceBtn.classList.remove('listening', 'has-audio');
-        this.voiceBtnLabel.textContent = 'Tap to speak';
+        this.voiceCircle.classList.remove('recording', 'has-audio');
 
         if (!this.isProcessing && !this.isSpeaking) {
-            this.updateStatus('', 'Ready');
+            this.updateUI('idle');
         }
     }
 
@@ -292,16 +301,13 @@ class VoiceAssistant {
             }
         }
 
-        // Barge-in detection - stop speaking if user starts talking
+        // Barge-in detection
         if ((currentInterim || currentFinal) && this.isSpeaking && this.currentAudio) {
             this.fadeOutAudio();
         }
 
-        // Update display
         if (currentInterim) {
             this.interimTranscript = currentInterim;
-            this.voiceBtn.classList.add('has-audio');
-            this.lastSpeechTime = Date.now();
             this.resetSilenceTimer();
         }
 
@@ -315,29 +321,23 @@ class VoiceAssistant {
     }
 
     updateTranscriptDisplay() {
-        // Clear existing content safely
-        while (this.transcriptText.firstChild) {
-            this.transcriptText.removeChild(this.transcriptText.firstChild);
+        while (this.displayContent.firstChild) {
+            this.displayContent.removeChild(this.displayContent.firstChild);
         }
 
         if (this.finalTranscript || this.interimTranscript) {
-            // Add final transcript as text node
-            if (this.finalTranscript) {
-                this.transcriptText.appendChild(document.createTextNode(this.finalTranscript));
-            }
+            const userDiv = document.createElement('div');
+            userDiv.className = 'user-text';
+            userDiv.textContent = this.finalTranscript;
 
-            // Add interim transcript with styling
             if (this.interimTranscript) {
                 const interimSpan = document.createElement('span');
                 interimSpan.className = 'interim';
                 interimSpan.textContent = this.interimTranscript;
-                this.transcriptText.appendChild(interimSpan);
+                userDiv.appendChild(interimSpan);
             }
-        } else {
-            const placeholder = document.createElement('span');
-            placeholder.className = 'placeholder';
-            placeholder.textContent = 'Press the microphone to start speaking...';
-            this.transcriptText.appendChild(placeholder);
+
+            this.displayContent.appendChild(userDiv);
         }
     }
 
@@ -365,15 +365,12 @@ class VoiceAssistant {
         this.finalTranscript = '';
         this.interimTranscript = '';
 
-        // Stop listening while processing
         await this.stopListening();
 
         this.isProcessing = true;
-        this.updateStatus('processing', 'Thinking...');
-        this.voiceBtn.classList.add('processing');
+        this.updateUI('processing');
 
         try {
-            // Send to backend
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -396,13 +393,12 @@ class VoiceAssistant {
                 { role: 'assistant', content: assistantMessage }
             );
 
-            // Keep history manageable
             if (this.conversationHistory.length > 20) {
                 this.conversationHistory = this.conversationHistory.slice(-20);
             }
 
-            // Display response safely using textContent
-            this.responseText.textContent = assistantMessage;
+            // Display response
+            this.displayResponse(userMessage, assistantMessage);
 
             // Speak response
             await this.speakResponse(assistantMessage);
@@ -412,16 +408,32 @@ class VoiceAssistant {
             this.showError('Failed to get response');
         } finally {
             this.isProcessing = false;
-            this.voiceBtn.classList.remove('processing');
+            this.voiceCircle.classList.remove('processing');
         }
+    }
+
+    displayResponse(userText, assistantText) {
+        while (this.displayContent.firstChild) {
+            this.displayContent.removeChild(this.displayContent.firstChild);
+        }
+
+        const userDiv = document.createElement('div');
+        userDiv.className = 'user-text';
+        userDiv.textContent = userText;
+
+        const assistantDiv = document.createElement('div');
+        assistantDiv.className = 'assistant-text';
+        assistantDiv.textContent = assistantText;
+
+        this.displayContent.appendChild(userDiv);
+        this.displayContent.appendChild(assistantDiv);
     }
 
     async speakResponse(text) {
         if (!text) return;
 
         this.isSpeaking = true;
-        this.updateStatus('speaking', 'Speaking...');
-        this.voiceBtn.classList.add('speaking');
+        this.updateUI('speaking');
 
         try {
             const response = await fetch('/api/tts', {
@@ -446,12 +458,11 @@ class VoiceAssistant {
 
         } catch (error) {
             console.error('TTS error:', error);
-            // Fallback to browser TTS
             await this.browserSpeak(text);
         } finally {
             this.isSpeaking = false;
-            this.voiceBtn.classList.remove('speaking');
-            this.updateStatus('', 'Ready');
+            this.voiceCircle.classList.remove('speaking');
+            this.updateUI('idle');
         }
     }
 
@@ -478,7 +489,6 @@ class VoiceAssistant {
         if (!this.currentAudio || this.currentAudio.paused) return;
 
         const audio = this.currentAudio;
-        const fadeInterval = 20;
         const fadeSteps = 10;
         const volumeStep = audio.volume / fadeSteps;
         let step = 0;
@@ -490,12 +500,11 @@ class VoiceAssistant {
             if (step >= fadeSteps || audio.volume <= 0) {
                 clearInterval(fade);
                 audio.pause();
-                audio.currentTime = 0;
                 this.currentAudio = null;
                 this.isSpeaking = false;
-                this.voiceBtn.classList.remove('speaking');
+                this.voiceCircle.classList.remove('speaking');
             }
-        }, fadeInterval);
+        }, 20);
     }
 
     browserSpeak(text) {
@@ -525,7 +534,6 @@ class VoiceAssistant {
 
     handleRecognitionEnd() {
         if (this.isListening && !this.isProcessing) {
-            // Restart recognition if still listening
             setTimeout(() => {
                 if (this.isListening && this.recognition) {
                     try {
@@ -540,121 +548,39 @@ class VoiceAssistant {
         }
     }
 
-    updateStatus(state, text) {
-        this.statusIndicator.className = 'status-indicator ' + state;
-        this.statusText.textContent = text;
+    updateUI(state) {
+        // Remove all state classes
+        this.voiceCircle.classList.remove('recording', 'processing', 'speaking');
+        this.statusText.classList.remove('recording', 'processing', 'speaking');
+
+        switch (state) {
+            case 'listening':
+                this.voiceCircle.classList.add('recording');
+                this.statusText.classList.add('recording');
+                this.statusText.textContent = 'Listening...';
+                break;
+            case 'processing':
+                this.voiceCircle.classList.add('processing');
+                this.statusText.classList.add('processing');
+                this.statusText.textContent = 'Thinking...';
+                break;
+            case 'speaking':
+                this.voiceCircle.classList.add('speaking');
+                this.statusText.classList.add('speaking');
+                this.statusText.textContent = 'Speaking...';
+                break;
+            default:
+                this.statusText.textContent = 'Tap to speak';
+        }
     }
 
     showError(message) {
-        this.updateStatus('error', message);
+        this.statusText.textContent = message;
+        this.statusText.classList.add('error');
         setTimeout(() => {
-            if (!this.isListening && !this.isProcessing && !this.isSpeaking) {
-                this.updateStatus('', 'Ready');
-            }
+            this.statusText.classList.remove('error');
+            this.updateUI('idle');
         }, 3000);
-    }
-
-    // Audio Visualization
-    startVisualization() {
-        const draw = () => {
-            if (!this.analyser) {
-                this.drawIdleVisualization();
-                return;
-            }
-
-            this.animationId = requestAnimationFrame(draw);
-
-            const bufferLength = this.analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            this.analyser.getByteFrequencyData(dataArray);
-
-            this.drawVisualization(dataArray);
-        };
-
-        draw();
-    }
-
-    stopVisualization() {
-        if (this.animationId) {
-            cancelAnimationFrame(this.animationId);
-            this.animationId = null;
-        }
-        this.drawIdleVisualization();
-    }
-
-    drawVisualization(dataArray) {
-        const ctx = this.canvasCtx;
-        const width = this.audioCanvas.width;
-        const height = this.audioCanvas.height;
-
-        // Clear canvas
-        ctx.fillStyle = '#12121a';
-        ctx.fillRect(0, 0, width, height);
-
-        // Draw waveform
-        const barCount = 64;
-        const barWidth = width / barCount;
-        const step = Math.floor(dataArray.length / barCount);
-
-        for (let i = 0; i < barCount; i++) {
-            const value = dataArray[i * step];
-            const percent = value / 255;
-            const barHeight = (height * 0.8) * percent;
-
-            // Create gradient for each bar
-            const gradient = ctx.createLinearGradient(0, height, 0, height - barHeight);
-            gradient.addColorStop(0, '#4f46e5');
-            gradient.addColorStop(0.5, '#6366f1');
-            gradient.addColorStop(1, '#818cf8');
-
-            ctx.fillStyle = gradient;
-
-            // Draw mirrored bars (center out)
-            const x = (width / 2) + (i - barCount / 2) * barWidth;
-            const y = (height - barHeight) / 2;
-
-            ctx.beginPath();
-            ctx.roundRect(x + 1, y, barWidth - 2, barHeight, 2);
-            ctx.fill();
-        }
-
-        // Add glow effect
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = 'rgba(99, 102, 241, 0.5)';
-    }
-
-    drawIdleVisualization() {
-        const ctx = this.canvasCtx;
-        const width = this.audioCanvas.width;
-        const height = this.audioCanvas.height;
-
-        // Clear canvas
-        ctx.fillStyle = '#12121a';
-        ctx.fillRect(0, 0, width, height);
-
-        // Draw subtle idle wave
-        const time = Date.now() / 1000;
-        const barCount = 64;
-        const barWidth = width / barCount;
-
-        for (let i = 0; i < barCount; i++) {
-            const wave = Math.sin(time * 2 + i * 0.2) * 0.5 + 0.5;
-            const barHeight = 4 + wave * 8;
-
-            ctx.fillStyle = 'rgba(99, 102, 241, 0.3)';
-
-            const x = (width / 2) + (i - barCount / 2) * barWidth;
-            const y = (height - barHeight) / 2;
-
-            ctx.beginPath();
-            ctx.roundRect(x + 1, y, barWidth - 2, barHeight, 2);
-            ctx.fill();
-        }
-
-        // Continue animation
-        if (!this.isListening) {
-            requestAnimationFrame(() => this.drawIdleVisualization());
-        }
     }
 }
 

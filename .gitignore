@@ -31,3 +31,6 @@ Thumbs.db
 .playwright-mcp/
 playwright-report/
 test-results/
+
+# SSL Certs
+certs/
