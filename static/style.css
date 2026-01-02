@@ -80,8 +80,262 @@ body {
     position: absolute;
     width: 100%;
     height: 100%;
-    z-index: 1;
+    z-index: 2;
     opacity: 0.8;
+}
+
+/* AI Avatar */
+.ai-avatar {
+    position: absolute;
+    width: 70%;
+    height: 70%;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.6;
+    transition: opacity 0.5s ease;
+}
+
+.ai-avatar-svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* AI Rings */
+.ai-ring {
+    fill: none;
+    stroke-width: 1;
+    opacity: 0.4;
+}
+
+.ai-ring-outer {
+    stroke: rgba(124, 185, 232, 0.3);
+    stroke-dasharray: 8 4;
+    animation: ai-rotate 20s linear infinite;
+    transform-origin: center;
+}
+
+.ai-ring-inner {
+    stroke: rgba(124, 185, 232, 0.4);
+    stroke-dasharray: 5 3;
+    animation: ai-rotate-reverse 15s linear infinite;
+    transform-origin: center;
+}
+
+/* AI Core */
+.ai-core {
+    fill: none;
+    stroke: rgba(124, 185, 232, 0.5);
+    stroke-width: 1.5;
+    animation: ai-pulse-core 3s ease-in-out infinite;
+}
+
+/* AI Eye */
+.ai-eye {
+    fill: rgba(124, 185, 232, 0.8);
+    animation: ai-pulse-eye 2s ease-in-out infinite;
+}
+
+/* Neural Connectors */
+.ai-connectors line {
+    stroke: rgba(124, 185, 232, 0.3);
+    stroke-width: 1;
+    stroke-linecap: round;
+}
+
+/* Neural Nodes */
+.ai-nodes circle {
+    fill: rgba(124, 185, 232, 0.5);
+    animation: ai-node-pulse 2s ease-in-out infinite;
+}
+
+.ai-nodes circle:nth-child(odd) {
+    animation-delay: 0.5s;
+}
+
+.ai-nodes circle:nth-child(even) {
+    animation-delay: 1s;
+}
+
+/* AI Avatar Animations */
+@keyframes ai-rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes ai-rotate-reverse {
+    from { transform: rotate(360deg); }
+    to { transform: rotate(0deg); }
+}
+
+@keyframes ai-pulse-core {
+    0%, 100% {
+        stroke-opacity: 0.5;
+        r: 20;
+    }
+    50% {
+        stroke-opacity: 0.8;
+        r: 22;
+    }
+}
+
+@keyframes ai-pulse-eye {
+    0%, 100% {
+        fill-opacity: 0.8;
+        r: 8;
+    }
+    50% {
+        fill-opacity: 1;
+        r: 9;
+    }
+}
+
+@keyframes ai-node-pulse {
+    0%, 100% { fill-opacity: 0.5; }
+    50% { fill-opacity: 1; }
+}
+
+/* Listening state - AI Avatar turns blue */
+.voice-avatar-container.listening .ai-avatar {
+    opacity: 0.8;
+}
+
+.voice-avatar-container.listening .ai-ring-outer,
+.voice-avatar-container.listening .ai-ring-inner {
+    stroke: rgba(124, 185, 232, 0.6);
+}
+
+.voice-avatar-container.listening .ai-core {
+    stroke: rgba(124, 185, 232, 0.8);
+}
+
+.voice-avatar-container.listening .ai-eye {
+    fill: rgba(124, 185, 232, 1);
+    animation: ai-eye-listening 0.5s ease-in-out infinite;
+}
+
+.voice-avatar-container.listening .ai-connectors line {
+    stroke: rgba(124, 185, 232, 0.5);
+    animation: ai-connector-pulse 1s ease-in-out infinite;
+}
+
+.voice-avatar-container.listening .ai-nodes circle {
+    fill: rgba(124, 185, 232, 0.8);
+}
+
+@keyframes ai-eye-listening {
+    0%, 100% { r: 8; fill-opacity: 0.9; }
+    50% { r: 10; fill-opacity: 1; }
+}
+
+@keyframes ai-connector-pulse {
+    0%, 100% { stroke-opacity: 0.3; }
+    50% { stroke-opacity: 0.8; }
+}
+
+/* Speaking state - AI Avatar turns orange */
+.voice-avatar-container.speaking .ai-avatar {
+    opacity: 0.9;
+}
+
+.voice-avatar-container.speaking .ai-ring-outer,
+.voice-avatar-container.speaking .ai-ring-inner {
+    stroke: rgba(255, 179, 71, 0.6);
+}
+
+.voice-avatar-container.speaking .ai-core {
+    stroke: rgba(255, 179, 71, 0.8);
+}
+
+.voice-avatar-container.speaking .ai-eye {
+    fill: rgba(255, 179, 71, 1);
+    animation: ai-eye-speaking 0.3s ease-in-out infinite;
+}
+
+.voice-avatar-container.speaking .ai-connectors line {
+    stroke: rgba(255, 179, 71, 0.6);
+    animation: ai-connector-pulse-fast 0.5s ease-in-out infinite;
+}
+
+.voice-avatar-container.speaking .ai-nodes circle {
+    fill: rgba(255, 179, 71, 0.9);
+    animation: ai-node-pulse-fast 0.5s ease-in-out infinite;
+}
+
+@keyframes ai-eye-speaking {
+    0%, 100% { r: 8; }
+    50% { r: 11; }
+}
+
+@keyframes ai-connector-pulse-fast {
+    0%, 100% { stroke-opacity: 0.4; }
+    50% { stroke-opacity: 1; }
+}
+
+@keyframes ai-node-pulse-fast {
+    0%, 100% { fill-opacity: 0.6; }
+    50% { fill-opacity: 1; }
+}
+
+/* Thinking state - AI Avatar pulses between colors */
+.voice-avatar-container.thinking .ai-avatar {
+    opacity: 0.85;
+}
+
+.voice-avatar-container.thinking .ai-ring-outer {
+    animation: ai-rotate 10s linear infinite, ai-ring-thinking 2s ease-in-out infinite;
+}
+
+.voice-avatar-container.thinking .ai-ring-inner {
+    animation: ai-rotate-reverse 8s linear infinite, ai-ring-thinking 2s ease-in-out infinite 0.5s;
+}
+
+.voice-avatar-container.thinking .ai-core {
+    animation: ai-core-thinking 2s ease-in-out infinite;
+}
+
+.voice-avatar-container.thinking .ai-eye {
+    animation: ai-eye-thinking 1s ease-in-out infinite;
+}
+
+.voice-avatar-container.thinking .ai-connectors line {
+    animation: ai-connector-thinking 1.5s ease-in-out infinite;
+}
+
+.voice-avatar-container.thinking .ai-nodes circle {
+    animation: ai-node-thinking 1s ease-in-out infinite;
+}
+
+@keyframes ai-ring-thinking {
+    0%, 100% { stroke: rgba(124, 185, 232, 0.5); }
+    50% { stroke: rgba(255, 179, 71, 0.5); }
+}
+
+@keyframes ai-core-thinking {
+    0%, 100% { stroke: rgba(124, 185, 232, 0.7); }
+    50% { stroke: rgba(255, 179, 71, 0.7); }
+}
+
+@keyframes ai-eye-thinking {
+    0%, 100% {
+        fill: rgba(124, 185, 232, 0.9);
+        r: 8;
+    }
+    50% {
+        fill: rgba(255, 179, 71, 0.9);
+        r: 10;
+    }
+}
+
+@keyframes ai-connector-thinking {
+    0%, 100% { stroke: rgba(124, 185, 232, 0.4); }
+    50% { stroke: rgba(255, 179, 71, 0.4); }
+}
+
+@keyframes ai-node-thinking {
+    0%, 100% { fill: rgba(124, 185, 232, 0.7); }
+    50% { fill: rgba(255, 179, 71, 0.7); }
 }
 
 /* Idle state */
