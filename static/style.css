@@ -84,349 +84,542 @@ body {
     opacity: 0.8;
 }
 
-/* AI Avatar */
+/* AI Avatar - Cyberpunk Geodesic Mesh */
 .ai-avatar {
     position: absolute;
-    width: 70%;
-    height: 70%;
+    width: 85%;
+    height: 85%;
     z-index: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0.6;
+    opacity: 0.7;
     transition: opacity 0.5s ease;
 }
 
 .ai-avatar-svg {
     width: 100%;
     height: 100%;
+    overflow: visible;
 }
 
-/* AI Rings */
-.ai-ring {
-    fill: none;
-    stroke-width: 1;
-    opacity: 0.4;
-}
-
-.ai-ring-outer {
-    stroke: rgba(124, 185, 232, 0.3);
-    stroke-dasharray: 8 4;
-    animation: ai-rotate 20s linear infinite;
+/* ===== MESH LAYERS ===== */
+.mesh-layer {
     transform-origin: center;
 }
 
-.ai-ring-inner {
-    stroke: rgba(124, 185, 232, 0.4);
-    stroke-dasharray: 5 3;
-    animation: ai-rotate-reverse 15s linear infinite;
+.mesh-outer {
+    animation: mesh-rotate-slow 25s linear infinite;
+}
+
+.mesh-middle {
+    animation: mesh-rotate-mid 18s linear infinite reverse;
+}
+
+.mesh-inner {
+    animation: mesh-rotate-fast 12s linear infinite;
+}
+
+/* Mesh shapes - Outer hexagons */
+.mesh-hex {
+    fill: none;
+    stroke: rgba(0, 240, 255, 0.25);
+    stroke-width: 0.5;
+}
+
+/* Mesh geodesic path */
+.mesh-geo {
+    fill: none;
+    stroke: rgba(168, 85, 247, 0.35);
+    stroke-width: 0.8;
+}
+
+/* Mesh diamond */
+.mesh-diamond {
+    fill: none;
+    stroke: rgba(255, 0, 128, 0.4);
+    stroke-width: 1;
+}
+
+/* Mesh lines */
+.mesh-line {
+    stroke: rgba(0, 240, 255, 0.2);
+    stroke-width: 0.5;
+}
+
+.mesh-line-inner {
+    stroke: rgba(168, 85, 247, 0.3);
+    stroke-width: 0.6;
+}
+
+.mesh-line-core {
+    stroke: rgba(255, 0, 128, 0.35);
+    stroke-width: 0.8;
+}
+
+/* ===== MESH NODES ===== */
+.node {
+    fill: rgba(0, 240, 255, 0.6);
+    animation: node-pulse 2s ease-in-out infinite;
+}
+
+.node-outer {
+    fill: rgba(0, 240, 255, 0.5);
+    animation-delay: 0s;
+}
+
+.node-mid {
+    fill: rgba(168, 85, 247, 0.6);
+    animation-delay: 0.3s;
+}
+
+.node-inner {
+    fill: rgba(255, 0, 128, 0.7);
+    animation-delay: 0.6s;
+}
+
+/* ===== CENTRAL CORE ===== */
+.core-ring {
+    fill: none;
+    stroke-width: 1;
+}
+
+.core-ring-outer {
+    stroke: rgba(0, 240, 255, 0.4);
+    stroke-dasharray: 4 2;
+    animation: core-ring-spin 8s linear infinite;
     transform-origin: center;
 }
 
-/* AI Core */
-.ai-core {
-    fill: none;
-    stroke: rgba(124, 185, 232, 0.5);
-    stroke-width: 1.5;
-    animation: ai-pulse-core 3s ease-in-out infinite;
+.core-ring-inner {
+    stroke: rgba(168, 85, 247, 0.5);
+    stroke-dasharray: 3 2;
+    animation: core-ring-spin 6s linear infinite reverse;
+    transform-origin: center;
 }
 
-/* AI Eye */
-.ai-eye {
-    fill: rgba(124, 185, 232, 0.8);
-    animation: ai-pulse-eye 2s ease-in-out infinite;
+.core-eye {
+    fill: url(#coreGradient);
+    animation: core-pulse 2s ease-in-out infinite;
 }
 
-/* Neural Connectors */
-.ai-connectors line {
-    stroke: rgba(124, 185, 232, 0.3);
-    stroke-width: 1;
-    stroke-linecap: round;
+.core-pupil {
+    fill: #FFFFFF;
+    animation: pupil-pulse 1.5s ease-in-out infinite;
 }
 
-/* Neural Nodes */
-.ai-nodes circle {
-    fill: rgba(124, 185, 232, 0.5);
-    animation: ai-node-pulse 2s ease-in-out infinite;
+/* ===== PARTICLES ===== */
+.particle {
+    fill: rgba(0, 240, 255, 0.6);
+    animation: particle-float 4s ease-in-out infinite;
 }
 
-.ai-nodes circle:nth-child(odd) {
-    animation-delay: 0.5s;
-}
+.particle:nth-child(2) { fill: rgba(168, 85, 247, 0.6); animation-delay: 0.5s; }
+.particle:nth-child(3) { fill: rgba(255, 0, 128, 0.6); animation-delay: 1s; }
+.particle:nth-child(4) { fill: rgba(0, 240, 255, 0.6); animation-delay: 1.5s; }
+.particle:nth-child(5) { fill: rgba(168, 85, 247, 0.6); animation-delay: 2s; }
+.particle:nth-child(6) { fill: rgba(255, 0, 128, 0.6); animation-delay: 2.5s; }
 
-.ai-nodes circle:nth-child(even) {
-    animation-delay: 1s;
-}
-
-/* AI Avatar Animations */
-@keyframes ai-rotate {
+/* ===== BASE ANIMATIONS ===== */
+@keyframes mesh-rotate-slow {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
 }
 
-@keyframes ai-rotate-reverse {
-    from { transform: rotate(360deg); }
-    to { transform: rotate(0deg); }
+@keyframes mesh-rotate-mid {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
-@keyframes ai-pulse-core {
-    0%, 100% {
-        stroke-opacity: 0.5;
-        r: 20;
-    }
-    50% {
-        stroke-opacity: 0.8;
-        r: 22;
-    }
+@keyframes mesh-rotate-fast {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
-@keyframes ai-pulse-eye {
-    0%, 100% {
-        fill-opacity: 0.8;
-        r: 8;
-    }
-    50% {
-        fill-opacity: 1;
-        r: 9;
-    }
+@keyframes node-pulse {
+    0%, 100% { opacity: 0.5; r: 2; }
+    50% { opacity: 1; r: 2.5; }
 }
 
-@keyframes ai-node-pulse {
-    0%, 100% { fill-opacity: 0.5; }
-    50% { fill-opacity: 1; }
+@keyframes core-ring-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
-/* Listening state - AI Avatar turns blue */
+@keyframes core-pulse {
+    0%, 100% { opacity: 0.8; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
+}
+
+@keyframes pupil-pulse {
+    0%, 100% { opacity: 0.9; r: 3; }
+    50% { opacity: 1; r: 4; }
+}
+
+@keyframes particle-float {
+    0%, 100% { opacity: 0.3; transform: translateY(0); }
+    50% { opacity: 0.8; transform: translateY(-3px); }
+}
+
+/* ===== LISTENING STATE - Cyan Dominant ===== */
 .voice-avatar-container.listening .ai-avatar {
-    opacity: 0.8;
-}
-
-.voice-avatar-container.listening .ai-ring-outer,
-.voice-avatar-container.listening .ai-ring-inner {
-    stroke: rgba(124, 185, 232, 0.6);
-}
-
-.voice-avatar-container.listening .ai-core {
-    stroke: rgba(124, 185, 232, 0.8);
-}
-
-.voice-avatar-container.listening .ai-eye {
-    fill: rgba(124, 185, 232, 1);
-    animation: ai-eye-listening 0.5s ease-in-out infinite;
-}
-
-.voice-avatar-container.listening .ai-connectors line {
-    stroke: rgba(124, 185, 232, 0.5);
-    animation: ai-connector-pulse 1s ease-in-out infinite;
-}
-
-.voice-avatar-container.listening .ai-nodes circle {
-    fill: rgba(124, 185, 232, 0.8);
-}
-
-@keyframes ai-eye-listening {
-    0%, 100% { r: 8; fill-opacity: 0.9; }
-    50% { r: 10; fill-opacity: 1; }
-}
-
-@keyframes ai-connector-pulse {
-    0%, 100% { stroke-opacity: 0.3; }
-    50% { stroke-opacity: 0.8; }
-}
-
-/* Speaking state - AI Avatar turns orange */
-.voice-avatar-container.speaking .ai-avatar {
     opacity: 0.9;
 }
 
-.voice-avatar-container.speaking .ai-ring-outer,
-.voice-avatar-container.speaking .ai-ring-inner {
-    stroke: rgba(255, 179, 71, 0.6);
+.voice-avatar-container.listening .mesh-hex {
+    stroke: rgba(0, 240, 255, 0.5);
+    animation: mesh-glow-cyan 1s ease-in-out infinite;
 }
 
-.voice-avatar-container.speaking .ai-core {
-    stroke: rgba(255, 179, 71, 0.8);
+.voice-avatar-container.listening .mesh-geo {
+    stroke: rgba(0, 240, 255, 0.45);
 }
 
-.voice-avatar-container.speaking .ai-eye {
-    fill: rgba(255, 179, 71, 1);
-    animation: ai-eye-speaking 0.3s ease-in-out infinite;
+.voice-avatar-container.listening .mesh-diamond {
+    stroke: rgba(0, 240, 255, 0.6);
 }
 
-.voice-avatar-container.speaking .ai-connectors line {
-    stroke: rgba(255, 179, 71, 0.6);
-    animation: ai-connector-pulse-fast 0.5s ease-in-out infinite;
+.voice-avatar-container.listening .mesh-line,
+.voice-avatar-container.listening .mesh-line-inner,
+.voice-avatar-container.listening .mesh-line-core {
+    stroke: rgba(0, 240, 255, 0.4);
+    animation: line-pulse-cyan 0.8s ease-in-out infinite;
 }
 
-.voice-avatar-container.speaking .ai-nodes circle {
-    fill: rgba(255, 179, 71, 0.9);
-    animation: ai-node-pulse-fast 0.5s ease-in-out infinite;
+.voice-avatar-container.listening .node {
+    fill: rgba(0, 240, 255, 0.9);
+    animation: node-pulse-fast 0.6s ease-in-out infinite;
 }
 
-@keyframes ai-eye-speaking {
-    0%, 100% { r: 8; }
-    50% { r: 11; }
+.voice-avatar-container.listening .core-ring-outer,
+.voice-avatar-container.listening .core-ring-inner {
+    stroke: rgba(0, 240, 255, 0.7);
 }
 
-@keyframes ai-connector-pulse-fast {
+.voice-avatar-container.listening .core-eye {
+    fill: rgba(0, 240, 255, 0.9);
+    animation: core-pulse-fast 0.5s ease-in-out infinite;
+}
+
+.voice-avatar-container.listening .core-pupil {
+    fill: #FFFFFF;
+    animation: pupil-listen 0.4s ease-in-out infinite;
+}
+
+.voice-avatar-container.listening .particle {
+    fill: rgba(0, 240, 255, 0.8);
+}
+
+@keyframes mesh-glow-cyan {
+    0%, 100% { stroke: rgba(0, 240, 255, 0.5); }
+    50% { stroke: rgba(0, 240, 255, 0.8); }
+}
+
+@keyframes line-pulse-cyan {
+    0%, 100% { stroke-opacity: 0.3; }
+    50% { stroke-opacity: 0.7; }
+}
+
+@keyframes node-pulse-fast {
+    0%, 100% { opacity: 0.7; r: 2; }
+    50% { opacity: 1; r: 3; }
+}
+
+@keyframes core-pulse-fast {
+    0%, 100% { opacity: 0.85; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.15); }
+}
+
+@keyframes pupil-listen {
+    0%, 100% { r: 3; }
+    50% { r: 4.5; }
+}
+
+/* ===== SPEAKING STATE - Magenta/Pink Dominant ===== */
+.voice-avatar-container.speaking .ai-avatar {
+    opacity: 1;
+}
+
+.voice-avatar-container.speaking .mesh-hex {
+    stroke: rgba(255, 0, 128, 0.5);
+    animation: mesh-glow-magenta 0.4s ease-in-out infinite;
+}
+
+.voice-avatar-container.speaking .mesh-geo {
+    stroke: rgba(255, 0, 128, 0.5);
+}
+
+.voice-avatar-container.speaking .mesh-diamond {
+    stroke: rgba(255, 0, 128, 0.7);
+}
+
+.voice-avatar-container.speaking .mesh-line,
+.voice-avatar-container.speaking .mesh-line-inner,
+.voice-avatar-container.speaking .mesh-line-core {
+    stroke: rgba(255, 0, 128, 0.5);
+    animation: line-pulse-magenta 0.3s ease-in-out infinite;
+}
+
+.voice-avatar-container.speaking .node {
+    fill: rgba(255, 0, 128, 1);
+    animation: node-pulse-speak 0.3s ease-in-out infinite;
+}
+
+.voice-avatar-container.speaking .core-ring-outer,
+.voice-avatar-container.speaking .core-ring-inner {
+    stroke: rgba(255, 0, 128, 0.8);
+    animation: core-ring-spin 3s linear infinite;
+}
+
+.voice-avatar-container.speaking .core-eye {
+    fill: rgba(255, 0, 128, 1);
+    animation: core-pulse-speak 0.25s ease-in-out infinite;
+}
+
+.voice-avatar-container.speaking .core-pupil {
+    fill: #FFFFFF;
+    animation: pupil-speak 0.2s ease-in-out infinite;
+}
+
+.voice-avatar-container.speaking .particle {
+    fill: rgba(255, 0, 128, 0.9);
+    animation: particle-burst 0.5s ease-in-out infinite;
+}
+
+.voice-avatar-container.speaking .mesh-outer {
+    animation: mesh-rotate-slow 15s linear infinite;
+}
+
+.voice-avatar-container.speaking .mesh-middle {
+    animation: mesh-rotate-mid 10s linear infinite reverse;
+}
+
+.voice-avatar-container.speaking .mesh-inner {
+    animation: mesh-rotate-fast 6s linear infinite;
+}
+
+@keyframes mesh-glow-magenta {
+    0%, 100% { stroke: rgba(255, 0, 128, 0.5); }
+    50% { stroke: rgba(255, 0, 128, 1); }
+}
+
+@keyframes line-pulse-magenta {
     0%, 100% { stroke-opacity: 0.4; }
     50% { stroke-opacity: 1; }
 }
 
-@keyframes ai-node-pulse-fast {
-    0%, 100% { fill-opacity: 0.6; }
-    50% { fill-opacity: 1; }
+@keyframes node-pulse-speak {
+    0%, 100% { opacity: 0.8; r: 2.5; }
+    50% { opacity: 1; r: 3.5; }
 }
 
-/* Thinking state - AI Avatar pulses between colors */
+@keyframes core-pulse-speak {
+    0%, 100% { opacity: 0.9; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
+
+@keyframes pupil-speak {
+    0%, 100% { r: 3; }
+    50% { r: 5; }
+}
+
+@keyframes particle-burst {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.5); }
+}
+
+/* ===== THINKING STATE - Purple Gradient Shift ===== */
 .voice-avatar-container.thinking .ai-avatar {
-    opacity: 0.85;
+    opacity: 0.95;
 }
 
-.voice-avatar-container.thinking .ai-ring-outer {
-    animation: ai-rotate 10s linear infinite, ai-ring-thinking 2s ease-in-out infinite;
+.voice-avatar-container.thinking .mesh-hex {
+    animation: mesh-color-shift 2s ease-in-out infinite;
 }
 
-.voice-avatar-container.thinking .ai-ring-inner {
-    animation: ai-rotate-reverse 8s linear infinite, ai-ring-thinking 2s ease-in-out infinite 0.5s;
+.voice-avatar-container.thinking .mesh-geo {
+    animation: mesh-color-shift 2s ease-in-out infinite 0.3s;
 }
 
-.voice-avatar-container.thinking .ai-core {
-    animation: ai-core-thinking 2s ease-in-out infinite;
+.voice-avatar-container.thinking .mesh-diamond {
+    animation: mesh-color-shift 2s ease-in-out infinite 0.6s;
 }
 
-.voice-avatar-container.thinking .ai-eye {
-    animation: ai-eye-thinking 1s ease-in-out infinite;
+.voice-avatar-container.thinking .mesh-line,
+.voice-avatar-container.thinking .mesh-line-inner,
+.voice-avatar-container.thinking .mesh-line-core {
+    animation: line-color-shift 1.5s ease-in-out infinite;
 }
 
-.voice-avatar-container.thinking .ai-connectors line {
-    animation: ai-connector-thinking 1.5s ease-in-out infinite;
+.voice-avatar-container.thinking .node {
+    animation: node-color-shift 1s ease-in-out infinite;
 }
 
-.voice-avatar-container.thinking .ai-nodes circle {
-    animation: ai-node-thinking 1s ease-in-out infinite;
+.voice-avatar-container.thinking .core-ring-outer {
+    animation: core-ring-spin 5s linear infinite, ring-color-shift 2s ease-in-out infinite;
 }
 
-@keyframes ai-ring-thinking {
-    0%, 100% { stroke: rgba(124, 185, 232, 0.5); }
-    50% { stroke: rgba(255, 179, 71, 0.5); }
+.voice-avatar-container.thinking .core-ring-inner {
+    animation: core-ring-spin 4s linear infinite reverse, ring-color-shift 2s ease-in-out infinite 0.5s;
 }
 
-@keyframes ai-core-thinking {
-    0%, 100% { stroke: rgba(124, 185, 232, 0.7); }
-    50% { stroke: rgba(255, 179, 71, 0.7); }
+.voice-avatar-container.thinking .core-eye {
+    animation: core-color-shift 1.5s ease-in-out infinite;
 }
 
-@keyframes ai-eye-thinking {
-    0%, 100% {
-        fill: rgba(124, 185, 232, 0.9);
-        r: 8;
-    }
-    50% {
-        fill: rgba(255, 179, 71, 0.9);
-        r: 10;
-    }
+.voice-avatar-container.thinking .core-pupil {
+    animation: pupil-think 1s ease-in-out infinite;
 }
 
-@keyframes ai-connector-thinking {
-    0%, 100% { stroke: rgba(124, 185, 232, 0.4); }
-    50% { stroke: rgba(255, 179, 71, 0.4); }
+.voice-avatar-container.thinking .particle {
+    animation: particle-think 2s ease-in-out infinite;
 }
 
-@keyframes ai-node-thinking {
-    0%, 100% { fill: rgba(124, 185, 232, 0.7); }
-    50% { fill: rgba(255, 179, 71, 0.7); }
+.voice-avatar-container.thinking .mesh-outer {
+    animation: mesh-rotate-slow 18s linear infinite;
 }
 
-/* Idle state */
+.voice-avatar-container.thinking .mesh-middle {
+    animation: mesh-rotate-mid 12s linear infinite reverse;
+}
+
+.voice-avatar-container.thinking .mesh-inner {
+    animation: mesh-rotate-fast 8s linear infinite;
+}
+
+@keyframes mesh-color-shift {
+    0%, 100% { stroke: rgba(0, 240, 255, 0.4); }
+    33% { stroke: rgba(168, 85, 247, 0.5); }
+    66% { stroke: rgba(255, 0, 128, 0.4); }
+}
+
+@keyframes line-color-shift {
+    0%, 100% { stroke: rgba(0, 240, 255, 0.3); }
+    33% { stroke: rgba(168, 85, 247, 0.4); }
+    66% { stroke: rgba(255, 0, 128, 0.3); }
+}
+
+@keyframes node-color-shift {
+    0%, 100% { fill: rgba(0, 240, 255, 0.7); }
+    33% { fill: rgba(168, 85, 247, 0.8); }
+    66% { fill: rgba(255, 0, 128, 0.7); }
+}
+
+@keyframes ring-color-shift {
+    0%, 100% { stroke: rgba(0, 240, 255, 0.5); }
+    33% { stroke: rgba(168, 85, 247, 0.6); }
+    66% { stroke: rgba(255, 0, 128, 0.5); }
+}
+
+@keyframes core-color-shift {
+    0%, 100% { fill: rgba(0, 240, 255, 0.8); transform: scale(1); }
+    33% { fill: rgba(168, 85, 247, 0.9); transform: scale(1.1); }
+    66% { fill: rgba(255, 0, 128, 0.8); transform: scale(1.05); }
+}
+
+@keyframes pupil-think {
+    0%, 100% { r: 3; opacity: 0.9; }
+    50% { r: 4; opacity: 1; }
+}
+
+@keyframes particle-think {
+    0%, 100% { fill: rgba(0, 240, 255, 0.5); transform: translateY(0); }
+    33% { fill: rgba(168, 85, 247, 0.7); transform: translateY(-2px); }
+    66% { fill: rgba(255, 0, 128, 0.5); transform: translateY(2px); }
+}
+
+/* Idle state - Subtle purple glow */
 .voice-avatar-container .voice-avatar-circle {
-    box-shadow: 0 0 0 2px rgba(107, 124, 147, 0.15);
+    box-shadow: 0 0 20px 5px rgba(168, 85, 247, 0.15),
+                0 0 40px 10px rgba(0, 240, 255, 0.08),
+                0 0 0 1px rgba(168, 85, 247, 0.2);
 }
 
-/* Listening state - Logo blue neon (#7CB9E8) */
+/* Listening state - Cyan neon glow (#00F0FF) */
 .voice-avatar-container.listening .voice-avatar-circle {
-    box-shadow: 0 0 15px 5px rgba(124, 185, 232, 0.35),
-                0 0 30px 10px rgba(124, 185, 232, 0.2),
-                0 0 0 2px rgba(124, 185, 232, 0.4);
-    animation: interview-listening 4s ease-in-out infinite;
+    box-shadow: 0 0 20px 8px rgba(0, 240, 255, 0.4),
+                0 0 40px 15px rgba(0, 240, 255, 0.25),
+                0 0 60px 20px rgba(0, 240, 255, 0.1),
+                0 0 0 2px rgba(0, 240, 255, 0.5);
+    animation: glow-listening 2s ease-in-out infinite;
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
 }
 
-@keyframes interview-listening {
+@keyframes glow-listening {
     0%, 100% {
-        box-shadow: 0 0 15px 5px rgba(124, 185, 232, 0.35),
-                    0 0 30px 10px rgba(124, 185, 232, 0.2),
-                    0 0 0 2px rgba(124, 185, 232, 0.4);
+        box-shadow: 0 0 20px 8px rgba(0, 240, 255, 0.4),
+                    0 0 40px 15px rgba(0, 240, 255, 0.25),
+                    0 0 60px 20px rgba(0, 240, 255, 0.1),
+                    0 0 0 2px rgba(0, 240, 255, 0.5);
         filter: brightness(1);
     }
     50% {
-        box-shadow: 0 0 25px 8px rgba(124, 185, 232, 0.5),
-                    0 0 50px 15px rgba(124, 185, 232, 0.3),
-                    0 0 0 2px rgba(124, 185, 232, 0.6);
-        filter: brightness(1.1);
+        box-shadow: 0 0 30px 12px rgba(0, 240, 255, 0.55),
+                    0 0 60px 25px rgba(0, 240, 255, 0.35),
+                    0 0 80px 30px rgba(0, 240, 255, 0.15),
+                    0 0 0 2px rgba(0, 240, 255, 0.7);
+        filter: brightness(1.15);
     }
 }
 
-/* Speaking state - Logo orange (#FFB347) */
+/* Speaking state - Magenta/Pink neon glow (#FF0080) */
 .voice-avatar-container.speaking .voice-avatar-circle {
-    box-shadow: 0 0 15px 5px rgba(255, 179, 71, 0.35),
-                0 0 30px 10px rgba(255, 179, 71, 0.2),
-                0 0 0 2px rgba(255, 179, 71, 0.4);
-    animation: interview-speaking 4s ease-in-out infinite;
+    box-shadow: 0 0 20px 8px rgba(255, 0, 128, 0.45),
+                0 0 40px 15px rgba(255, 0, 128, 0.3),
+                0 0 60px 20px rgba(255, 0, 128, 0.15),
+                0 0 0 2px rgba(255, 0, 128, 0.55);
+    animation: glow-speaking 0.5s ease-in-out infinite;
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
 }
 
-@keyframes interview-speaking {
+@keyframes glow-speaking {
     0%, 100% {
-        box-shadow: 0 0 15px 5px rgba(255, 179, 71, 0.35),
-                    0 0 30px 10px rgba(255, 179, 71, 0.2),
-                    0 0 0 2px rgba(255, 179, 71, 0.4);
+        box-shadow: 0 0 20px 8px rgba(255, 0, 128, 0.45),
+                    0 0 40px 15px rgba(255, 0, 128, 0.3),
+                    0 0 60px 20px rgba(255, 0, 128, 0.15),
+                    0 0 0 2px rgba(255, 0, 128, 0.55);
         filter: brightness(1);
     }
     50% {
-        box-shadow: 0 0 25px 8px rgba(255, 179, 71, 0.5),
-                    0 0 50px 15px rgba(255, 179, 71, 0.3),
-                    0 0 0 2px rgba(255, 179, 71, 0.6);
-        filter: brightness(1.1);
+        box-shadow: 0 0 35px 15px rgba(255, 0, 128, 0.6),
+                    0 0 70px 30px rgba(255, 0, 128, 0.4),
+                    0 0 100px 40px rgba(255, 0, 128, 0.2),
+                    0 0 0 2px rgba(255, 0, 128, 0.8);
+        filter: brightness(1.2);
     }
 }
 
-/* Thinking state - Mixed blue/orange gradient */
+/* Thinking state - Purple gradient shift */
 .voice-avatar-container.thinking .voice-avatar-circle {
-    box-shadow: 0 0 15px 5px rgba(124, 185, 232, 0.3),
-                0 0 30px 10px rgba(255, 179, 71, 0.15),
-                0 0 0 2px rgba(124, 185, 232, 0.35);
-    animation: interview-thinking 2s ease-in-out infinite;
+    box-shadow: 0 0 20px 8px rgba(168, 85, 247, 0.35),
+                0 0 40px 15px rgba(168, 85, 247, 0.2),
+                0 0 60px 20px rgba(168, 85, 247, 0.1),
+                0 0 0 2px rgba(168, 85, 247, 0.45);
+    animation: glow-thinking 2s ease-in-out infinite;
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
 }
 
-@keyframes interview-thinking {
+@keyframes glow-thinking {
     0%, 100% {
-        box-shadow: 0 0 15px 5px rgba(124, 185, 232, 0.3),
-                    0 0 30px 10px rgba(255, 179, 71, 0.15),
-                    0 0 0 2px rgba(124, 185, 232, 0.35);
+        box-shadow: 0 0 20px 8px rgba(0, 240, 255, 0.35),
+                    0 0 40px 15px rgba(0, 240, 255, 0.2),
+                    0 0 0 2px rgba(0, 240, 255, 0.4);
         filter: brightness(1);
     }
-    25% {
-        box-shadow: 0 0 20px 6px rgba(255, 179, 71, 0.35),
-                    0 0 40px 12px rgba(124, 185, 232, 0.2),
-                    0 0 0 2px rgba(255, 179, 71, 0.45);
-        filter: brightness(1.05);
-    }
-    50% {
-        box-shadow: 0 0 25px 8px rgba(124, 185, 232, 0.4),
-                    0 0 50px 15px rgba(255, 179, 71, 0.25),
-                    0 0 0 2px rgba(124, 185, 232, 0.5);
+    33% {
+        box-shadow: 0 0 25px 10px rgba(168, 85, 247, 0.45),
+                    0 0 50px 20px rgba(168, 85, 247, 0.3),
+                    0 0 0 2px rgba(168, 85, 247, 0.55);
         filter: brightness(1.1);
     }
-    75% {
-        box-shadow: 0 0 20px 6px rgba(255, 179, 71, 0.35),
-                    0 0 40px 12px rgba(124, 185, 232, 0.2),
-                    0 0 0 2px rgba(255, 179, 71, 0.45);
-        filter: brightness(1.05);
+    66% {
+        box-shadow: 0 0 25px 10px rgba(255, 0, 128, 0.4),
+                    0 0 50px 20px rgba(255, 0, 128, 0.25),
+                    0 0 0 2px rgba(255, 0, 128, 0.5);
+        filter: brightness(1.1);
     }
 }
 
