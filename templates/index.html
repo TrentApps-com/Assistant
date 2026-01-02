@@ -2,45 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Voice Assistant</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="container">
-        <!-- Main Voice Circle -->
-        <div class="voice-circle-container">
-            <button class="voice-circle" id="voiceCircle" aria-label="Start voice recording">
-                <!-- Microphone Icon (shown when idle) -->
-                <svg class="mic-icon" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-                </svg>
-                <!-- Sound Bars (shown when recording) -->
-                <div class="sound-bars">
-                    <span class="sound-bar"></span>
-                    <span class="sound-bar"></span>
-                    <span class="sound-bar"></span>
-                    <span class="sound-bar"></span>
-                    <span class="sound-bar"></span>
-                    <span class="sound-bar"></span>
-                    <span class="sound-bar"></span>
-                </div>
-                <!-- Pulse Ring -->
-                <div class="pulse-ring"></div>
-            </button>
-        </div>
-
-        <!-- Status Text -->
-        <div class="status-text" id="statusText">Tap to speak</div>
-
-        <!-- Transcript/Response Display -->
-        <div class="text-display" id="textDisplay">
-            <div class="display-content" id="displayContent">
-                <span class="placeholder">Your conversation will appear here...</span>
-            </div>
-        </div>
-
+    <!-- Interview Mode Overlay - Full Screen -->
+    <div class="interview-overlay active" id="interviewOverlay">
         <!-- Settings Button -->
         <button class="settings-btn" id="settingsBtn" aria-label="Settings">
             <svg viewBox="0 0 24 24" fill="currentColor">
@@ -75,6 +43,21 @@
                     <span class="status-dot" id="kokoroStatus"></span>
                     <span>Kokoro TTS</span>
                 </div>
+            </div>
+        </div>
+
+        <!-- Main Interview Container -->
+        <div class="interview-container">
+            <!-- Voice Avatar Circle with Waveform Canvas -->
+            <div class="voice-avatar-container" id="voiceAvatarContainer">
+                <div class="voice-avatar-circle" id="voiceAvatarCircle">
+                    <canvas class="voice-waveform" id="voiceWaveform" width="200" height="200"></canvas>
+                </div>
+            </div>
+
+            <!-- Transcript Display -->
+            <div class="interview-transcript" id="interviewTranscript">
+                <div class="interview-current-text" id="interviewCurrentText">Tap the circle to start speaking</div>
             </div>
         </div>
     </div>
