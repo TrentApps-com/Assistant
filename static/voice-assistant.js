@@ -721,16 +721,54 @@ function browserSpeak(text) {
 }
 
 // Settings functions
-async function loadSettings() {
+const STORAGE_KEY = 'voiceAssistantSettings';
+
+function saveSettingsToStorage() {
+    const settings = {
+        selectedVoice: state.selectedVoice,
+        selectedModel: state.selectedModel,
+        speechSpeed: state.speechSpeed
+    };
     try {
-        // Load voices
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    } catch (e) {
+        console.warn('Failed to save settings to localStorage:', e);
+    }
+}
+
+function loadSettingsFromStorage() {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+            const settings = JSON.parse(stored);
+            if (settings.selectedVoice) state.selectedVoice = settings.selectedVoice;
+            if (settings.selectedModel) state.selectedModel = settings.selectedModel;
+            if (settings.speechSpeed) state.speechSpeed = settings.speechSpeed;
+
+            // Update UI for speed
+            if (elements.speedRange && elements.speedValue) {
+                elements.speedRange.value = state.speechSpeed;
+                elements.speedValue.textContent = `${state.speechSpeed}x`;
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to load settings from localStorage:', e);
+    }
+}
+
+async function loadSettings() {
+    // First load any saved settings from localStorage
+    loadSettingsFromStorage();
+
+    try {
+        // Load voices from API
         const voicesRes = await fetch('/api/voices');
         if (voicesRes.ok) {
             const data = await voicesRes.json();
             populateVoices(data.voices || []);
         }
 
-        // Load models
+        // Load models from API
         const modelsRes = await fetch('/api/models');
         if (modelsRes.ok) {
             const data = await modelsRes.json();
@@ -775,6 +813,7 @@ function populateVoices(voices) {
 
     elements.voiceSelect.addEventListener('change', (e) => {
         state.selectedVoice = e.target.value;
+        saveSettingsToStorage();
     });
 }
 
@@ -796,12 +835,14 @@ function populateModels(models) {
 
     elements.modelSelect.addEventListener('change', (e) => {
         state.selectedModel = e.target.value;
+        saveSettingsToStorage();
     });
 }
 
 function updateSpeed(e) {
     state.speechSpeed = parseFloat(e.target.value);
     elements.speedValue.textContent = `${e.target.value}x`;
+    saveSettingsToStorage();
 }
 
 function openSettings() {
