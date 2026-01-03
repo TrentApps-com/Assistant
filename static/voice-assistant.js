@@ -425,8 +425,9 @@ function toggleMute() {
     updateMuteButtonVisual();
 
     if (state.isMuted) {
-        // MUTED - completely stop all microphone usage
-        // But DON'T interrupt ongoing AI processing or speaking
+        // MUTED - stop microphone input only
+        // DON'T interrupt ongoing AI processing or speaking
+        // DON'T stop audio output
 
         // Stop speech recognition
         if (state.recognition) {
@@ -435,20 +436,10 @@ function toggleMute() {
         }
         state.isListening = false;
 
-        // Stop waveform visualization
-        stopWaveformVisualization();
-
-        // Stop and release the audio stream entirely
+        // Stop and release the microphone audio stream
         if (waveformAudioStream) {
             waveformAudioStream.getTracks().forEach(track => track.stop());
             waveformAudioStream = null;
-        }
-
-        // Clear audio context
-        if (waveformAudioContext) {
-            waveformAudioContext.close();
-            waveformAudioContext = null;
-            waveformAnalyser = null;
         }
 
         // Clear listening timers but NOT processing
@@ -457,10 +448,12 @@ function toggleMute() {
 
         // Only change display if not currently processing/speaking
         if (!state.isProcessing && !state.isSpeaking) {
+            // Stop mic waveform visualization only if not speaking
+            stopWaveformVisualization();
             setAvatarState('idle');
             showCurrentText('Microphone muted', true);
         }
-        // If processing/speaking, let it continue - just mic is off
+        // If speaking, let audio continue - don't touch audio context
 
     } else {
         // UNMUTED - update visual immediately
