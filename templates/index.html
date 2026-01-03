@@ -51,120 +51,80 @@
             <!-- Voice Avatar Circle with Waveform Canvas -->
             <div class="voice-avatar-container" id="voiceAvatarContainer">
                 <div class="voice-avatar-circle" id="voiceAvatarCircle">
-                    <!-- AI Avatar SVG - Flowing Plasma Mesh Design -->
+                    <!-- AI Avatar SVG - Neon Particle Orb -->
                     <div class="ai-avatar" id="aiAvatar">
-                        <svg viewBox="0 0 200 200" class="ai-avatar-svg">
+                        <svg viewBox="0 0 100 100" class="ai-avatar-svg">
                             <defs>
-                                <!-- Gooey filter for organic blob merging -->
-                                <filter id="gooey" x="-50%" y="-50%" width="200%" height="200%">
-                                    <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>
-                                    <feColorMatrix in="blur" mode="matrix"
-                                        values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -10" result="gooey"/>
-                                    <feComposite in="SourceGraphic" in2="gooey" operator="atop"/>
+                                <!-- Intense glow filter -->
+                                <filter id="neonGlow" x="-100%" y="-100%" width="300%" height="300%">
+                                    <feGaussianBlur stdDeviation="3" result="blur1"/>
+                                    <feGaussianBlur stdDeviation="6" result="blur2"/>
+                                    <feGaussianBlur stdDeviation="12" result="blur3"/>
+                                    <feMerge>
+                                        <feMergeNode in="blur3"/>
+                                        <feMergeNode in="blur2"/>
+                                        <feMergeNode in="blur1"/>
+                                        <feMergeNode in="SourceGraphic"/>
+                                    </feMerge>
                                 </filter>
-                                <!-- Soft glow -->
-                                <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-                                    <feGaussianBlur stdDeviation="3" result="blur"/>
+                                <!-- Particle glow -->
+                                <filter id="particleGlow" x="-200%" y="-200%" width="500%" height="500%">
+                                    <feGaussianBlur stdDeviation="2" result="blur"/>
                                     <feMerge>
                                         <feMergeNode in="blur"/>
                                         <feMergeNode in="blur"/>
                                         <feMergeNode in="SourceGraphic"/>
                                     </feMerge>
                                 </filter>
-                                <!-- Mesh line glow -->
-                                <filter id="meshGlow" x="-100%" y="-100%" width="300%" height="300%">
-                                    <feGaussianBlur stdDeviation="1.5" result="blur"/>
-                                    <feMerge>
-                                        <feMergeNode in="blur"/>
-                                        <feMergeNode in="SourceGraphic"/>
-                                    </feMerge>
-                                </filter>
-                                <!-- Radial mask for depth -->
-                                <radialGradient id="depthMask" cx="50%" cy="50%" r="50%">
-                                    <stop offset="0%" stop-color="white" stop-opacity="1"/>
-                                    <stop offset="60%" stop-color="white" stop-opacity="0.9"/>
-                                    <stop offset="100%" stop-color="white" stop-opacity="0"/>
+                                <!-- Core orb gradient - cyan to magenta -->
+                                <radialGradient id="orbCore" cx="40%" cy="40%" r="60%">
+                                    <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+                                    <stop offset="20%" stop-color="#00ffff" stop-opacity="0.9"/>
+                                    <stop offset="50%" stop-color="#8b5cf6" stop-opacity="0.7"/>
+                                    <stop offset="80%" stop-color="#ec4899" stop-opacity="0.4"/>
+                                    <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
                                 </radialGradient>
-                                <mask id="circleMask">
-                                    <circle cx="100" cy="100" r="90" fill="url(#depthMask)"/>
-                                </mask>
-                                <!-- Gradient definitions -->
-                                <linearGradient id="plasma1" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" stop-color="rgba(139,92,246,0.8)"/>
-                                    <stop offset="100%" stop-color="rgba(59,130,246,0.6)"/>
-                                </linearGradient>
-                                <linearGradient id="plasma2" x1="100%" y1="0%" x2="0%" y2="100%">
-                                    <stop offset="0%" stop-color="rgba(34,211,238,0.7)"/>
-                                    <stop offset="100%" stop-color="rgba(139,92,246,0.5)"/>
-                                </linearGradient>
-                                <linearGradient id="plasma3" x1="50%" y1="0%" x2="50%" y2="100%">
-                                    <stop offset="0%" stop-color="rgba(236,72,153,0.6)"/>
-                                    <stop offset="100%" stop-color="rgba(251,146,60,0.4)"/>
-                                </linearGradient>
+                                <!-- Outer aura gradient -->
+                                <radialGradient id="orbAura" cx="50%" cy="50%" r="50%">
+                                    <stop offset="0%" stop-color="#00ffff" stop-opacity="0"/>
+                                    <stop offset="60%" stop-color="#8b5cf6" stop-opacity="0.15"/>
+                                    <stop offset="85%" stop-color="#ec4899" stop-opacity="0.3"/>
+                                    <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+                                </radialGradient>
+                                <!-- Inner shine -->
+                                <radialGradient id="innerShine" cx="35%" cy="35%" r="40%">
+                                    <stop offset="0%" stop-color="#ffffff" stop-opacity="0.8"/>
+                                    <stop offset="50%" stop-color="#00ffff" stop-opacity="0.3"/>
+                                    <stop offset="100%" stop-color="#00ffff" stop-opacity="0"/>
+                                </radialGradient>
                             </defs>
 
-                            <!-- Flowing plasma blobs with gooey effect -->
-                            <g class="plasma-layer" mask="url(#circleMask)" filter="url(#gooey)">
-                                <!-- Base plasma blobs -->
-                                <ellipse class="plasma-blob blob-1" cx="100" cy="100" rx="45" ry="40" fill="url(#plasma1)"/>
-                                <ellipse class="plasma-blob blob-2" cx="75" cy="85" rx="35" ry="30" fill="url(#plasma2)"/>
-                                <ellipse class="plasma-blob blob-3" cx="125" cy="115" rx="38" ry="32" fill="url(#plasma2)"/>
-                                <ellipse class="plasma-blob blob-4" cx="90" cy="120" rx="32" ry="28" fill="url(#plasma3)"/>
-                                <ellipse class="plasma-blob blob-5" cx="115" cy="80" rx="30" ry="25" fill="url(#plasma3)"/>
-                                <!-- Smaller accent blobs -->
-                                <circle class="plasma-blob blob-6" cx="60" cy="100" r="18" fill="url(#plasma1)"/>
-                                <circle class="plasma-blob blob-7" cx="140" cy="100" r="18" fill="url(#plasma1)"/>
-                                <circle class="plasma-blob blob-8" cx="100" cy="60" r="16" fill="url(#plasma2)"/>
-                                <circle class="plasma-blob blob-9" cx="100" cy="140" r="16" fill="url(#plasma3)"/>
+                            <!-- Outer aura ring -->
+                            <circle class="orb-aura" cx="50" cy="50" r="45" fill="url(#orbAura)"/>
+
+                            <!-- Main glowing orb -->
+                            <g class="orb-core" filter="url(#neonGlow)">
+                                <circle cx="50" cy="50" r="25" fill="url(#orbCore)"/>
+                                <circle cx="50" cy="50" r="18" fill="url(#innerShine)"/>
                             </g>
 
-                            <!-- Flowing mesh lines overlay -->
-                            <g class="mesh-layer" mask="url(#circleMask)" filter="url(#meshGlow)">
-                                <!-- Curved mesh lines -->
-                                <path class="mesh-line line-1" d="M30,100 Q65,70 100,100 Q135,130 170,100"/>
-                                <path class="mesh-line line-2" d="M30,100 Q65,130 100,100 Q135,70 170,100"/>
-                                <path class="mesh-line line-3" d="M100,30 Q70,65 100,100 Q130,135 100,170"/>
-                                <path class="mesh-line line-4" d="M100,30 Q130,65 100,100 Q70,135 100,170"/>
-                                <!-- Diagonal mesh -->
-                                <path class="mesh-line line-5" d="M40,40 Q100,80 160,40"/>
-                                <path class="mesh-line line-6" d="M40,160 Q100,120 160,160"/>
-                                <path class="mesh-line line-7" d="M40,40 Q80,100 40,160"/>
-                                <path class="mesh-line line-8" d="M160,40 Q120,100 160,160"/>
-                                <!-- Inner curves -->
-                                <path class="mesh-line line-9" d="M60,80 Q100,60 140,80"/>
-                                <path class="mesh-line line-10" d="M60,120 Q100,140 140,120"/>
-                            </g>
-
-                            <!-- Glowing nodes at intersections -->
-                            <g class="node-layer" filter="url(#softGlow)">
-                                <!-- Center node -->
-                                <circle class="node node-center" cx="100" cy="100" r="5"/>
-                                <!-- Primary ring -->
-                                <circle class="node node-1" cx="100" cy="60" r="3"/>
-                                <circle class="node node-2" cx="135" cy="80" r="3"/>
-                                <circle class="node node-3" cx="135" cy="120" r="3"/>
-                                <circle class="node node-4" cx="100" cy="140" r="3"/>
-                                <circle class="node node-5" cx="65" cy="120" r="3"/>
-                                <circle class="node node-6" cx="65" cy="80" r="3"/>
-                                <!-- Outer ring -->
-                                <circle class="node node-7" cx="100" cy="35" r="2"/>
-                                <circle class="node node-8" cx="155" cy="65" r="2"/>
-                                <circle class="node node-9" cx="155" cy="135" r="2"/>
-                                <circle class="node node-10" cx="100" cy="165" r="2"/>
-                                <circle class="node node-11" cx="45" cy="135" r="2"/>
-                                <circle class="node node-12" cx="45" cy="65" r="2"/>
-                            </g>
-
-                            <!-- Floating particles -->
-                            <g class="particle-layer">
-                                <circle class="particle p-1" cx="80" cy="70" r="1.5"/>
-                                <circle class="particle p-2" cx="120" cy="75" r="1.2"/>
-                                <circle class="particle p-3" cx="130" cy="110" r="1.5"/>
-                                <circle class="particle p-4" cx="115" cy="135" r="1.3"/>
-                                <circle class="particle p-5" cx="85" cy="130" r="1.4"/>
-                                <circle class="particle p-6" cx="70" cy="105" r="1.2"/>
-                                <circle class="particle p-7" cx="95" cy="85" r="1"/>
-                                <circle class="particle p-8" cx="105" cy="115" r="1"/>
+                            <!-- Orbiting particles -->
+                            <g class="orb-particles" filter="url(#particleGlow)">
+                                <!-- Inner orbit -->
+                                <circle class="particle p1" cx="50" cy="22" r="2.5" fill="#00ffff"/>
+                                <circle class="particle p2" cx="78" cy="50" r="2" fill="#ec4899"/>
+                                <circle class="particle p3" cx="50" cy="78" r="2.2" fill="#8b5cf6"/>
+                                <circle class="particle p4" cx="22" cy="50" r="1.8" fill="#00ffff"/>
+                                <!-- Outer orbit -->
+                                <circle class="particle p5" cx="30" cy="20" r="1.5" fill="#ec4899"/>
+                                <circle class="particle p6" cx="80" cy="30" r="1.8" fill="#8b5cf6"/>
+                                <circle class="particle p7" cx="75" cy="75" r="1.6" fill="#00ffff"/>
+                                <circle class="particle p8" cx="25" cy="70" r="1.4" fill="#ec4899"/>
+                                <!-- Micro particles -->
+                                <circle class="particle p9" cx="40" cy="15" r="1" fill="#ffffff"/>
+                                <circle class="particle p10" cx="85" cy="45" r="0.8" fill="#ffffff"/>
+                                <circle class="particle p11" cx="60" cy="85" r="1.1" fill="#ffffff"/>
+                                <circle class="particle p12" cx="15" cy="55" r="0.9" fill="#ffffff"/>
                             </g>
                         </svg>
                     </div>
