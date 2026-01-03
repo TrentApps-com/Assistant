@@ -45,10 +45,15 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 50px;
+    gap: 40px;
     max-width: 600px;
     width: 100%;
     padding: 20px;
+    /* Lock the container position - don't shift based on content */
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -55%); /* Slightly above center */
 }
 
 /* Voice Avatar Circle - FormFlow Style */
@@ -138,13 +143,13 @@ body {
     }
 }
 
-/* Speaking state - Magenta/pink glow */
+/* Speaking state - Magenta/pink glow - SLOW gentle pulse, no flash */
 .voice-avatar-container.speaking .voice-avatar-circle {
     box-shadow: 0 0 25px 10px rgba(236, 72, 153, 0.4),
                 0 0 50px 20px rgba(236, 72, 153, 0.25),
                 0 0 75px 30px rgba(139, 92, 246, 0.15),
                 0 0 0 1px rgba(236, 72, 153, 0.5);
-    animation: glow-speaking 0.5s ease-in-out infinite;
+    animation: glow-speaking 3s ease-in-out infinite;
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
 }
@@ -157,10 +162,10 @@ body {
                     0 0 0 1px rgba(236, 72, 153, 0.5);
     }
     50% {
-        box-shadow: 0 0 40px 18px rgba(236, 72, 153, 0.55),
-                    0 0 70px 30px rgba(236, 72, 153, 0.35),
-                    0 0 100px 45px rgba(139, 92, 246, 0.2),
-                    0 0 0 1px rgba(236, 72, 153, 0.7);
+        box-shadow: 0 0 32px 13px rgba(236, 72, 153, 0.48),
+                    0 0 58px 24px rgba(236, 72, 153, 0.3),
+                    0 0 85px 35px rgba(139, 92, 246, 0.18),
+                    0 0 0 1px rgba(236, 72, 153, 0.6);
     }
 }
 
@@ -193,15 +198,22 @@ body {
     }
 }
 
-/* Single message display - shows only current text */
+/* Single message display - fixed height with scroll and top fade */
 .interview-transcript {
     width: 100%;
     max-width: 500px;
-    min-height: 80px;
+    height: 120px;
+    min-height: 120px;
+    max-height: 120px;
     display: flex;
-    align-items: center;
+    align-items: flex-end; /* Align to bottom so new text appears at bottom */
     justify-content: center;
     text-align: center;
+    overflow: hidden;
+    position: relative;
+    /* Fade gradient at top */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 25%, black 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, black 25%, black 100%);
 }
 
 .interview-current-text {
@@ -210,6 +222,15 @@ body {
     line-height: 1.7;
     font-weight: 300;
     transition: opacity 0.4s ease;
+    max-height: 120px;
+    overflow-y: auto;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+    padding: 10px 0;
+}
+
+.interview-current-text::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
 }
 
 .interview-current-text.faded {
@@ -241,6 +262,46 @@ body {
 }
 
 .settings-btn svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* Mute Button */
+.mute-btn {
+    position: absolute;
+    top: 80px;
+    right: 24px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.4);
+    transition: all var(--transition-medium);
+    z-index: 10;
+}
+
+.mute-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.mute-btn.muted {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: rgba(239, 68, 68, 0.8);
+}
+
+.mute-btn.muted:hover {
+    background: rgba(239, 68, 68, 0.25);
+    color: rgba(239, 68, 68, 1);
+}
+
+.mute-btn svg {
     width: 24px;
     height: 24px;
 }
@@ -414,6 +475,13 @@ body {
 
     .settings-btn {
         top: 16px;
+        right: 16px;
+        width: 40px;
+        height: 40px;
+    }
+
+    .mute-btn {
+        top: 64px;
         right: 16px;
         width: 40px;
         height: 40px;

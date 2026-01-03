@@ -17,6 +17,7 @@ const state = {
     isListening: false,
     isSpeaking: false,
     isProcessing: false,
+    isMuted: false, // Microphone mute state
     recognition: null,
     conversationHistory: [],
     currentTranscript: '',
@@ -66,12 +67,16 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.speedValue = document.getElementById('speedValue');
     elements.ollamaStatus = document.getElementById('ollamaStatus');
     elements.kokoroStatus = document.getElementById('kokoroStatus');
+    elements.muteBtn = document.getElementById('muteBtn');
+    elements.micOnIcon = document.getElementById('micOnIcon');
+    elements.micOffIcon = document.getElementById('micOffIcon');
 
     // Set up event listeners
     elements.voiceAvatarContainer.addEventListener('click', toggleVoiceMode);
     elements.settingsBtn.addEventListener('click', openSettings);
     elements.closeSettings.addEventListener('click', closeSettings);
     elements.speedRange.addEventListener('input', updateSpeed);
+    elements.muteBtn.addEventListener('click', toggleMute);
 
     // Close settings when clicking outside
     document.addEventListener('click', (e) => {
@@ -98,6 +103,8 @@ function setAvatarState(avatarState) {
 function showCurrentText(text, faded = false) {
     elements.interviewCurrentText.textContent = text;
     elements.interviewCurrentText.classList.toggle('faded', faded);
+    // Auto-scroll to bottom for long text
+    elements.interviewCurrentText.scrollTop = elements.interviewCurrentText.scrollHeight;
 }
 
 function updateInterimTranscript(text) {
@@ -402,6 +409,37 @@ async function toggleVoiceMode() {
     }
 }
 
+// Update mute button visual based on actual mic state
+function updateMuteButtonVisual() {
+    // Show muted appearance when: manually muted OR not actively listening
+    const showMuted = state.isMuted || !state.isListening;
+    elements.muteBtn.classList.toggle('muted', showMuted);
+    elements.micOnIcon.style.display = showMuted ? 'none' : 'block';
+    elements.micOffIcon.style.display = showMuted ? 'block' : 'none';
+}
+
+// Toggle microphone mute
+function toggleMute() {
+    state.isMuted = !state.isMuted;
+    updateMuteButtonVisual();
+
+    if (state.isMuted) {
+        // Muted - pause speech recognition but keep session active
+        if (state.recognition) {
+            state.recognition.stop();
+        }
+        // Clear any pending timers
+        clearTimeout(state.silenceTimer);
+        clearTimeout(state.thinkingTimer);
+        showCurrentText('Microphone muted - tap to unmute', true);
+    } else {
+        // Unmuted - resume speech recognition if active
+        if (state.isActive && !state.isSpeaking && !state.isProcessing) {
+            startListening();
+        }
+    }
+}
+
 // Start voice mode
 async function startVoiceMode() {
     try {
@@ -435,6 +473,7 @@ function stopVoiceMode() {
     state.isListening = false;
     state.isProcessing = false;
     state.isSpeaking = false;
+    updateMuteButtonVisual();
 
     if (state.recognition) {
         try { state.recognition.stop(); } catch (e) {}
@@ -457,7 +496,7 @@ function stopVoiceMode() {
 
 // Start listening
 function startListening() {
-    if (!state.isActive || state.isListening || state.isSpeaking) return;
+    if (!state.isActive || state.isListening || state.isSpeaking || state.isMuted) return;
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     state.recognition = new SpeechRecognition();
@@ -467,6 +506,7 @@ function startListening() {
 
     state.recognition.onstart = () => {
         state.isListening = true;
+        updateMuteButtonVisual();
         setAvatarState('listening');
         showCurrentText('Listening...', true);
         state.finalTranscript = '';
@@ -561,6 +601,7 @@ async function processTranscript() {
 
     // Stop listening while processing
     state.isListening = false;
+    updateMuteButtonVisual();
     if (state.recognition) {
         try { state.recognition.stop(); } catch (e) {}
     }

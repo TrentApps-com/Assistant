@@ -560,15 +560,24 @@ class NeonOrb {
                 uniform float uAudioLevel;
                 varying float vIntensity;
 
-                void main() {
-                    // Always-pulsing core - alive even without audio
-                    float basePulse = sin(uTime * 2.5) * 0.15 + sin(uTime * 1.7) * 0.1;
-                    float audioPulse = uAudioLevel * 0.4;
-                    vIntensity = 0.85 + basePulse + audioPulse;
+                // Smooth easing function for curved oscillation
+                float smoothPulse(float t) {
+                    float s = sin(t);
+                    // Cubic easing for smoother curves at peaks
+                    return s * s * s * sign(s) * 0.5 + s * 0.5;
+                }
 
-                    // Core size pulses continuously, grows more with audio
-                    float baseSize = 100.0 + sin(uTime * 2.0) * 15.0 + sin(uTime * 3.3) * 8.0;
-                    float audioSize = uAudioLevel * 50.0;
+                void main() {
+                    // SLOW, smooth pulsing - single gentle wave
+                    float slowTime = uTime * 0.4;
+                    float basePulse = smoothPulse(slowTime) * 0.08;
+                    float audioPulse = uAudioLevel * 0.25;
+                    vIntensity = 0.9 + basePulse + audioPulse;
+
+                    // Core size - ONE slow smooth wave, not multiple interfering
+                    float sizeWave = smoothPulse(uTime * 0.5) * 8.0;
+                    float baseSize = 95.0 + sizeWave;
+                    float audioSize = uAudioLevel * 35.0;
 
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                     gl_PointSize = (baseSize + audioSize) / -mvPosition.z;
@@ -591,14 +600,14 @@ class NeonOrb {
                     float glow3 = smoothstep(0.2, 0.0, dist);
                     float glow4 = smoothstep(0.08, 0.0, dist);
 
-                    // Pulsing color mix
-                    float colorMix = sin(uTime * 2.0) * 0.5 + 0.5;
+                    // SLOW color transition - 8 second cycle
+                    float colorMix = sin(uTime * 0.25) * 0.5 + 0.5;
                     vec3 baseColor = mix(uColor1, uColor2, colorMix);
 
                     vec3 color = baseColor * glow1 * 0.4;
                     color += mix(baseColor, vec3(1.0), 0.5) * glow2 * 0.3;
                     color += vec3(1.0) * glow3 * 0.4;
-                    color += vec3(1.0) * glow4 * 0.6; // Bright white center
+                    color += vec3(1.0) * glow4 * 0.6;
 
                     float alpha = glow1 * vIntensity;
                     gl_FragColor = vec4(color, alpha);
@@ -829,19 +838,19 @@ class NeonOrb {
         const smoothedAudio = this._smoothedAudio;
 
         // ============================================
-        // ALWAYS-BREATHING GLOBAL SCALE
-        // The orb is always alive - gently pulsing even without audio
-        // Audio makes it breathe MORE, not START breathing
+        // CALM, SMOOTH BREATHING
+        // Single slow wave with eased curves - no sharp turns
         // ============================================
 
-        // Multiple overlapping sine waves for organic, non-mechanical breathing
-        const breath1 = Math.sin(time * 1.2) * 0.035;
-        const breath2 = Math.sin(time * 0.8 + 1.0) * 0.025;
-        const breath3 = Math.sin(time * 2.1) * 0.015;
-        const baseBreath = breath1 + breath2 + breath3;
+        // Single smooth sine wave - slow and gentle
+        const breathPhase = time * 0.5; // ~12 second full cycle
+        const rawBreath = Math.sin(breathPhase);
+        // Ease the sine for smoother peaks (cubic smoothing)
+        const easedBreath = rawBreath * Math.abs(rawBreath) * 0.5 + rawBreath * 0.5;
+        const baseBreath = easedBreath * 0.025; // Subtle amplitude
 
-        // Audio adds to the breathing, doesn't replace it
-        const audioBreath = smoothedAudio * 0.12;
+        // Audio adds gentle expansion
+        const audioBreath = smoothedAudio * 0.08;
         const globalScale = 1.0 + baseBreath + audioBreath;
 
         // ===== UPDATE INNER PARTICLE CLOUD =====
@@ -862,10 +871,11 @@ class NeonOrb {
             this.detailCloudMaterial.uniforms.uTime.value = time;
             this.detailCloudMaterial.uniforms.uAudioLevel.value = smoothedAudio;
 
-            // Slightly offset breathing for layered depth effect
-            const detailBreath1 = Math.sin(time * 1.2 + 0.7) * 0.03;
-            const detailBreath2 = Math.sin(time * 0.9) * 0.02;
-            const detailScale = 1.0 + detailBreath1 + detailBreath2 + audioBreath * 0.85;
+            // Offset phase for layered depth - same smooth curve
+            const detailPhase = time * 0.5 + 1.0;
+            const detailRaw = Math.sin(detailPhase);
+            const detailEased = detailRaw * Math.abs(detailRaw) * 0.5 + detailRaw * 0.5;
+            const detailScale = 1.0 + detailEased * 0.02 + audioBreath * 0.7;
             this.detailCloud.scale.setScalar(detailScale);
 
             // Parallax tilt
@@ -878,9 +888,9 @@ class NeonOrb {
             this.coreMaterial.uniforms.uTime.value = time;
             this.coreMaterial.uniforms.uAudioLevel.value = smoothedAudio;
 
-            // Core has its own internal pulsing via shader
-            // Just add subtle global scale sync
-            const coreScale = 1.0 + baseBreath * 0.5 + audioBreath * 0.8;
+            // Core has its own smooth pulsing via shader
+            // Just sync with global scale subtly
+            const coreScale = 1.0 + baseBreath * 0.4 + audioBreath * 0.6;
             this.corePoint.scale.setScalar(coreScale);
         }
 
@@ -889,13 +899,12 @@ class NeonOrb {
             this.edgeRing.material.uniforms.uTime.value = time;
             this.edgeRing.material.uniforms.uAudioLevel.value = smoothedAudio;
 
-            // Edge ring breathes with the orb
-            const edgeBreath = Math.sin(time * 1.3) * 0.025 + Math.sin(time * 0.7) * 0.02;
-            const edgeScale = 1.0 + edgeBreath + audioBreath * 0.7;
+            // Edge ring breathes smoothly with the orb
+            const edgeScale = 1.0 + baseBreath * 0.6 + audioBreath * 0.5;
             this.edgeRing.scale.setScalar(edgeScale);
 
             // Very slow rotation for shimmer effect
-            this.edgeRing.rotation.y = time * 0.04;
+            this.edgeRing.rotation.y = time * 0.03;
         }
 
         // ===== UPDATE OUTER PARTICLES =====
@@ -906,16 +915,16 @@ class NeonOrb {
 
         // ===== UPDATE OUTER GLOW =====
         if (this.glow && this.glow.material) {
-            // Glow intensity always pulsing
-            const glowPulse = Math.sin(time * 1.4) * 0.12 + Math.sin(time * 0.9) * 0.08;
-            const glowIntensity = 0.55 + glowPulse + smoothedAudio * 0.4;
+            // Glow intensity - slow smooth pulse
+            const glowPhase = time * 0.4;
+            const glowPulse = Math.sin(glowPhase) * 0.08;
+            const glowIntensity = 0.55 + glowPulse + smoothedAudio * 0.3;
             this.glow.material.uniforms.uIntensity.value = glowIntensity;
             this.glow.material.uniforms.uTime.value = time;
             this.glow.material.uniforms.uAudioLevel.value = smoothedAudio;
 
             // Glow expands with breathing
-            const glowBreath = Math.sin(time * 1.1) * 0.04 + Math.sin(time * 0.6) * 0.03;
-            const glowScale = 1.0 + glowBreath + audioBreath * 1.1;
+            const glowScale = 1.0 + baseBreath * 0.8 + audioBreath * 0.9;
             this.glow.scale.setScalar(glowScale);
         }
 
@@ -923,11 +932,10 @@ class NeonOrb {
         if (this.aura && this.aura.material) {
             this.aura.material.uniforms.uTime.value = time;
             // Very slow rotation
-            this.aura.rotation.z = time * 0.15;
+            this.aura.rotation.z = time * 0.1;
 
-            // Aura pulses gently always, more with audio
-            const auraPulse = Math.sin(time * 0.8) * 0.03;
-            const auraScale = 1.0 + auraPulse + smoothedAudio * 0.15;
+            // Aura syncs with global breathing
+            const auraScale = 1.0 + baseBreath * 0.5 + smoothedAudio * 0.1;
             this.aura.scale.setScalar(auraScale);
         }
 
