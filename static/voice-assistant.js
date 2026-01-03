@@ -418,24 +418,59 @@ function updateMuteButtonVisual() {
     elements.micOffIcon.style.display = showMuted ? 'block' : 'none';
 }
 
-// Toggle microphone mute
+// Toggle microphone mute - completely stops all mic input when muted
 function toggleMute() {
     state.isMuted = !state.isMuted;
     updateMuteButtonVisual();
 
     if (state.isMuted) {
-        // Muted - pause speech recognition but keep session active
+        // MUTED - completely stop all microphone usage
+
+        // Stop speech recognition
         if (state.recognition) {
-            state.recognition.stop();
+            try { state.recognition.stop(); } catch (e) {}
+            state.recognition = null;
         }
+        state.isListening = false;
+
+        // Stop waveform visualization
+        stopWaveformVisualization();
+
+        // Stop and release the audio stream entirely
+        if (waveformAudioStream) {
+            waveformAudioStream.getTracks().forEach(track => track.stop());
+            waveformAudioStream = null;
+        }
+
+        // Clear audio context
+        if (waveformAudioContext) {
+            waveformAudioContext.close();
+            waveformAudioContext = null;
+            waveformAnalyser = null;
+        }
+
         // Clear any pending timers
         clearTimeout(state.silenceTimer);
         clearTimeout(state.thinkingTimer);
-        showCurrentText('Microphone muted - tap to unmute', true);
+
+        // Show muted state but keep orb in idle
+        setAvatarState('idle');
+        showCurrentText('Microphone muted', true);
+
     } else {
-        // Unmuted - resume speech recognition if active
+        // UNMUTED - re-acquire microphone if voice mode is active
         if (state.isActive && !state.isSpeaking && !state.isProcessing) {
-            startListening();
+            // Re-request microphone access
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    waveformAudioStream = stream;
+                    startIdleWaveform();
+                    startListening();
+                })
+                .catch(err => {
+                    console.error('Failed to re-acquire microphone:', err);
+                    showCurrentText('Microphone access denied');
+                });
         }
     }
 }
@@ -449,11 +484,18 @@ async function startVoiceMode() {
             return;
         }
 
-        // Request microphone access
-        waveformAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
         state.isActive = true;
         state.conversationHistory = [];
+
+        // If muted, don't request microphone - just show muted state
+        if (state.isMuted) {
+            showCurrentText('Microphone muted', true);
+            setAvatarState('idle');
+            return;
+        }
+
+        // Request microphone access
+        waveformAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
         // Start idle waveform
         startIdleWaveform();
