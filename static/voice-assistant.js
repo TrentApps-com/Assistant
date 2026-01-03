@@ -409,13 +409,13 @@ async function toggleVoiceMode() {
     }
 }
 
-// Update mute button visual based on actual mic state
+// Update mute button visual based on mute state only
 function updateMuteButtonVisual() {
-    // Show muted appearance when: manually muted OR not actively listening
-    const showMuted = state.isMuted || !state.isListening;
-    elements.muteBtn.classList.toggle('muted', showMuted);
-    elements.micOnIcon.style.display = showMuted ? 'none' : 'block';
-    elements.micOffIcon.style.display = showMuted ? 'block' : 'none';
+    // Show muted appearance ONLY when manually muted
+    // Not based on listening state - that's confusing
+    elements.muteBtn.classList.toggle('muted', state.isMuted);
+    elements.micOnIcon.style.display = state.isMuted ? 'none' : 'block';
+    elements.micOffIcon.style.display = state.isMuted ? 'block' : 'none';
 }
 
 // Toggle microphone mute - completely stops all mic input when muted
