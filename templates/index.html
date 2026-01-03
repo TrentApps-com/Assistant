@@ -7,8 +7,47 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+    <!-- Login Overlay -->
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-container">
+            <h2>Voice Assistant</h2>
+            <p>Enter password to access</p>
+            <form id="loginForm">
+                <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
+                <button type="submit">Login</button>
+                <div class="login-error" id="loginError"></div>
+            </form>
+        </div>
+    </div>
+
     <!-- Interview Mode Overlay - Full Screen -->
     <div class="interview-overlay active" id="interviewOverlay">
+        <!-- Notification Button -->
+        <button class="notification-btn" id="notificationBtn" aria-label="Notifications">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/>
+            </svg>
+            <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
+        </button>
+
+        <!-- Notification Panel -->
+        <div class="notification-panel" id="notificationPanel">
+            <div class="notification-header">
+                <span>Notifications</span>
+                <div class="notification-actions">
+                    <button class="mark-read-btn" id="markAllReadBtn" title="Mark all as read">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                        </svg>
+                    </button>
+                    <button class="close-btn" id="closeNotifications">&times;</button>
+                </div>
+            </div>
+            <div class="notification-list" id="notificationList">
+                <div class="notification-empty">No notifications</div>
+            </div>
+        </div>
+
         <!-- Settings Button -->
         <button class="settings-btn" id="settingsBtn" aria-label="Settings">
             <svg viewBox="0 0 24 24" fill="currentColor">

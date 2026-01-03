@@ -18,6 +18,7 @@ const state = {
     isSpeaking: false,
     isProcessing: false,
     isMuted: false, // Microphone mute state
+    isAuthenticated: false,
     recognition: null,
     conversationHistory: [],
     currentTranscript: '',
@@ -28,7 +29,10 @@ const state = {
     speechStartTime: null,
     selectedVoice: 'af_heart',
     selectedModel: 'llama3.2:latest',
-    speechSpeed: 1.0
+    speechSpeed: 1.0,
+    notifications: [],
+    unreadCount: 0,
+    notificationPollInterval: null
 };
 
 // DOM Elements
@@ -71,6 +75,20 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.micOnIcon = document.getElementById('micOnIcon');
     elements.micOffIcon = document.getElementById('micOffIcon');
 
+    // Login elements
+    elements.loginOverlay = document.getElementById('loginOverlay');
+    elements.loginForm = document.getElementById('loginForm');
+    elements.loginPassword = document.getElementById('loginPassword');
+    elements.loginError = document.getElementById('loginError');
+
+    // Notification elements
+    elements.notificationBtn = document.getElementById('notificationBtn');
+    elements.notificationBadge = document.getElementById('notificationBadge');
+    elements.notificationPanel = document.getElementById('notificationPanel');
+    elements.notificationList = document.getElementById('notificationList');
+    elements.closeNotifications = document.getElementById('closeNotifications');
+    elements.markAllReadBtn = document.getElementById('markAllReadBtn');
+
     // Set up event listeners
     elements.voiceAvatarContainer.addEventListener('click', toggleVoiceMode);
     elements.settingsBtn.addEventListener('click', openSettings);
@@ -78,12 +96,26 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.speedRange.addEventListener('input', updateSpeed);
     elements.muteBtn.addEventListener('click', toggleMute);
 
-    // Close settings when clicking outside
+    // Login event listeners
+    elements.loginForm.addEventListener('submit', handleLogin);
+
+    // Notification event listeners
+    elements.notificationBtn.addEventListener('click', toggleNotificationPanel);
+    elements.closeNotifications.addEventListener('click', closeNotificationPanel);
+    elements.markAllReadBtn.addEventListener('click', markAllNotificationsRead);
+
+    // Close panels when clicking outside
     document.addEventListener('click', (e) => {
         if (!elements.settingsPanel.contains(e.target) && !elements.settingsBtn.contains(e.target)) {
             closeSettings();
         }
+        if (!elements.notificationPanel.contains(e.target) && !elements.notificationBtn.contains(e.target)) {
+            closeNotificationPanel();
+        }
     });
+
+    // Check authentication status first
+    checkAuthStatus();
 
     // Load settings and check health
     loadSettings();
@@ -670,7 +702,25 @@ async function processTranscript() {
         }
 
         const data = await response.json();
-        const assistantMessage = data.response;
+        let assistantMessage = data.response;
+
+        // Check if the response is a function call
+        const functionCall = detectFunctionCall(assistantMessage);
+        if (functionCall) {
+            // Execute the function call and get a human-readable response
+            const functionResponse = await executeFunctionCall(functionCall);
+
+            // Update conversation with function execution info
+            state.conversationHistory.push(
+                { role: 'user', content: userMessage },
+                { role: 'assistant', content: `[Function: ${functionCall.function}] ${functionResponse}` }
+            );
+
+            // Speak the function response
+            showCurrentText(functionResponse, false);
+            await speakResponse(functionResponse);
+            return;
+        }
 
         // Update conversation history
         state.conversationHistory.push(
@@ -975,4 +1025,267 @@ async function checkHealth() {
     } catch (error) {
         console.error('Health check failed:', error);
     }
+}
+
+// ============ Authentication Functions ============
+
+async function checkAuthStatus() {
+    try {
+        const res = await fetch('/api/auth/status', { credentials: 'include' });
+        const data = await res.json();
+
+        if (data.authenticated) {
+            state.isAuthenticated = true;
+            elements.loginOverlay.classList.add('hidden');
+            startNotificationPolling();
+        } else {
+            state.isAuthenticated = false;
+            elements.loginOverlay.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Auth status check failed:', error);
+        elements.loginOverlay.classList.remove('hidden');
+    }
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const password = elements.loginPassword.value;
+
+    if (!password) {
+        elements.loginError.textContent = 'Please enter a password';
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ password })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            state.isAuthenticated = true;
+            elements.loginOverlay.classList.add('hidden');
+            elements.loginError.textContent = '';
+            elements.loginPassword.value = '';
+            startNotificationPolling();
+        } else {
+            elements.loginError.textContent = data.error || 'Login failed';
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        elements.loginError.textContent = 'Connection error. Please try again.';
+    }
+}
+
+// ============ Notification Functions ============
+
+function startNotificationPolling() {
+    // Initial fetch
+    fetchNotifications();
+    // Poll every 10 seconds
+    state.notificationPollInterval = setInterval(fetchNotifications, 10000);
+}
+
+function stopNotificationPolling() {
+    if (state.notificationPollInterval) {
+        clearInterval(state.notificationPollInterval);
+        state.notificationPollInterval = null;
+    }
+}
+
+async function fetchNotifications() {
+    try {
+        const res = await fetch('/api/notifications', { credentials: 'include' });
+        const data = await res.json();
+
+        state.notifications = data.notifications || [];
+        state.unreadCount = data.unread_count || 0;
+        updateNotificationBadge();
+        renderNotifications();
+    } catch (error) {
+        console.error('Failed to fetch notifications:', error);
+    }
+}
+
+function updateNotificationBadge() {
+    if (state.unreadCount > 0) {
+        elements.notificationBadge.textContent = state.unreadCount > 99 ? '99+' : state.unreadCount;
+        elements.notificationBadge.style.display = 'flex';
+    } else {
+        elements.notificationBadge.style.display = 'none';
+    }
+}
+
+function renderNotifications() {
+    if (!state.notifications || state.notifications.length === 0) {
+        elements.notificationList.innerHTML = '<div class="notification-empty">No notifications</div>';
+        return;
+    }
+
+    elements.notificationList.innerHTML = state.notifications.map(notification => {
+        const timeAgo = formatTimeAgo(new Date(notification.created_at));
+        const unreadClass = notification.read ? '' : 'unread';
+        return `
+            <div class="notification-item ${unreadClass}" data-id="${notification.id}">
+                <div class="notification-item-title">
+                    <span class="notification-type-icon ${notification.type}"></span>
+                    ${escapeHtml(notification.title)}
+                </div>
+                <div class="notification-item-message">${escapeHtml(notification.message)}</div>
+                <div class="notification-item-time">${timeAgo}</div>
+            </div>
+        `;
+    }).join('');
+
+    // Add click handlers to mark as read
+    elements.notificationList.querySelectorAll('.notification-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const id = item.dataset.id;
+            markNotificationRead(id);
+            item.classList.remove('unread');
+        });
+    });
+}
+
+async function markNotificationRead(id) {
+    try {
+        await fetch('/api/notifications/mark-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ ids: [id] })
+        });
+        // Update local state
+        const notification = state.notifications.find(n => n.id === id);
+        if (notification && !notification.read) {
+            notification.read = true;
+            state.unreadCount = Math.max(0, state.unreadCount - 1);
+            updateNotificationBadge();
+        }
+    } catch (error) {
+        console.error('Failed to mark notification as read:', error);
+    }
+}
+
+async function markAllNotificationsRead() {
+    try {
+        await fetch('/api/notifications/mark-read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ all: true })
+        });
+        // Update local state
+        state.notifications.forEach(n => n.read = true);
+        state.unreadCount = 0;
+        updateNotificationBadge();
+        renderNotifications();
+    } catch (error) {
+        console.error('Failed to mark all notifications as read:', error);
+    }
+}
+
+function toggleNotificationPanel() {
+    elements.notificationPanel.classList.toggle('open');
+    if (elements.notificationPanel.classList.contains('open')) {
+        elements.notificationBtn.style.display = 'none';
+        fetchNotifications(); // Refresh when opening
+    } else {
+        elements.notificationBtn.style.display = 'flex';
+    }
+}
+
+function closeNotificationPanel() {
+    elements.notificationPanel.classList.remove('open');
+    elements.notificationBtn.style.display = 'flex';
+}
+
+// ============ Function Call Detection ============
+
+function detectFunctionCall(response) {
+    // Try to parse as JSON to detect function call
+    try {
+        // Check if the response starts with { and ends with }
+        const trimmed = response.trim();
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            const parsed = JSON.parse(trimmed);
+            if (parsed.function === 'claude_execute' && parsed.prompt) {
+                return parsed;
+            }
+        }
+    } catch (e) {
+        // Not JSON, return null
+    }
+    return null;
+}
+
+async function executeFunctionCall(functionCall) {
+    showCurrentText('Executing Claude Code task...', true);
+    setAvatarState('thinking');
+
+    try {
+        const res = await fetch('/api/claude/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                prompt: functionCall.prompt,
+                project: functionCall.project || '/mnt/code'
+            })
+        });
+
+        const data = await res.json();
+
+        if (res.status === 401) {
+            return "I need you to be authenticated to execute code tasks. Please log in first.";
+        }
+
+        if (res.status === 403) {
+            if (data.task_created) {
+                return "That task requires approval. I've created a task for review. Check your notifications for updates.";
+            }
+            return "That action was declined by the supervisor. " + (data.reason || '');
+        }
+
+        if (!res.ok) {
+            return "Sorry, I couldn't start the task. " + (data.error || 'Unknown error');
+        }
+
+        if (data.status === 'pending_approval') {
+            return "That task requires human approval before I can proceed. You'll get a notification when it's ready.";
+        }
+
+        if (data.status === 'queued') {
+            return "I've started working on that task in the background. You'll get a notification when it's complete.";
+        }
+
+        return "Task has been queued. Check notifications for updates.";
+
+    } catch (error) {
+        console.error('Function call execution error:', error);
+        return "Sorry, I encountered an error while trying to execute that task.";
+    }
+}
+
+// ============ Helper Functions ============
+
+function formatTimeAgo(date) {
+    const seconds = Math.floor((new Date() - date) / 1000);
+
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+    return date.toLocaleDateString();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }

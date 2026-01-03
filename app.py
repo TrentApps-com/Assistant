@@ -1,17 +1,25 @@
 """
 Solo Voice Assistant - Flask Backend
 Integrates with local Ollama for text generation and Kokoro TTS for voice output
+Supports function calling via Claude Code execution with supervisor approval
 """
 
 import os
 import json
 import base64
+import subprocess
+import threading
+import time
+import uuid
+from datetime import datetime
+from functools import wraps
 import requests
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, session
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
+CORS(app, supports_credentials=True)
 
 # Configuration
 OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://localhost:11434')
@@ -19,8 +27,106 @@ OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'llama3.2:latest')
 KOKORO_URL = os.environ.get('KOKORO_URL', 'http://localhost:8880')
 KOKORO_VOICE = os.environ.get('KOKORO_VOICE', 'af_heart')
 
-# System prompt for the assistant
-SYSTEM_PROMPT = """You are a helpful, friendly voice assistant. Keep your responses concise and conversational since they will be spoken aloud. Aim for 1-3 sentences unless the user asks for more detail. Be warm and engaging."""
+# Authentication - simple password for single user
+AUTH_PASSWORD = os.environ.get('ASSISTANT_PASSWORD', 'assistant123')
+
+# Claude Code configuration
+CLAUDE_WORKING_DIR = os.environ.get('CLAUDE_WORKING_DIR', '/mnt/code')
+# Allow all commonly used tools including web and Playwright
+CLAUDE_ALLOWED_TOOLS = os.environ.get('CLAUDE_ALLOWED_TOOLS',
+    'Read,Write,Edit,Bash,Glob,Grep,WebSearch,WebFetch,' +
+    'mcp__playwright__playwright_navigate,mcp__playwright__playwright_click,' +
+    'mcp__playwright__playwright_fill,mcp__playwright__playwright_screenshot,' +
+    'mcp__playwright__playwright_get_visible_text,mcp__playwright__playwright_get_visible_html,' +
+    'mcp__playwright__playwright_console_logs,mcp__playwright__playwright_evaluate,' +
+    'mcp__playwright__playwright_hover,mcp__playwright__playwright_select,' +
+    'mcp__playwright__playwright_close,mcp__playwright__playwright_go_back'
+)
+
+# Supervisor MCP URL (for approval workflow)
+SUPERVISOR_URL = os.environ.get('SUPERVISOR_URL', 'http://localhost:3100')
+
+# Notifications storage (in-memory, persisted to file)
+NOTIFICATIONS_FILE = os.path.join(os.path.dirname(__file__), 'notifications.json')
+notifications = []
+notifications_lock = threading.Lock()
+
+# Active Claude jobs
+active_jobs = {}
+jobs_lock = threading.Lock()
+
+
+def load_notifications():
+    """Load notifications from file"""
+    global notifications
+    try:
+        if os.path.exists(NOTIFICATIONS_FILE):
+            with open(NOTIFICATIONS_FILE, 'r') as f:
+                notifications = json.load(f)
+    except Exception as e:
+        print(f'Failed to load notifications: {e}')
+        notifications = []
+
+
+def save_notifications():
+    """Save notifications to file"""
+    try:
+        with open(NOTIFICATIONS_FILE, 'w') as f:
+            json.dump(notifications, f, indent=2, default=str)
+    except Exception as e:
+        print(f'Failed to save notifications: {e}')
+
+
+def add_notification(title, message, notification_type='info', job_id=None):
+    """Add a notification"""
+    with notifications_lock:
+        notification = {
+            'id': str(uuid.uuid4()),
+            'title': title,
+            'message': message,
+            'type': notification_type,  # 'info', 'success', 'error', 'warning'
+            'job_id': job_id,
+            'read': False,
+            'created_at': datetime.now().isoformat()
+        }
+        notifications.insert(0, notification)
+        # Keep only last 100 notifications
+        if len(notifications) > 100:
+            notifications = notifications[:100]
+        save_notifications()
+        return notification
+
+
+def require_auth(f):
+    """Decorator to require authentication for endpoints"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('authenticated'):
+            return jsonify({'error': 'Authentication required'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# Load notifications on startup
+load_notifications()
+
+
+# System prompt for the assistant with function calling
+SYSTEM_PROMPT = """You are a helpful, friendly voice assistant with the ability to execute code tasks. Keep your responses concise and conversational since they will be spoken aloud. Aim for 1-3 sentences unless the user asks for more detail. Be warm and engaging.
+
+You have access to a special function called "claude_execute" that can run Claude Code to perform coding tasks on the server. When a user asks you to:
+- Write code, fix bugs, or modify files
+- Create new features or applications
+- Run commands or scripts
+- Analyze or review code
+
+You should respond with a JSON object in this format to trigger the function:
+{"function": "claude_execute", "prompt": "detailed description of what to do", "project": "optional/project/path"}
+
+For example, if the user says "fix the bug in the login page", respond with:
+{"function": "claude_execute", "prompt": "Fix the bug in the login page", "project": "/mnt/code/myapp"}
+
+Otherwise, respond normally with helpful conversation."""
 
 
 @app.route('/')
@@ -231,6 +337,356 @@ def health_check():
         'status': overall,
         'services': status
     })
+
+
+# ============ Authentication Endpoints ============
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """Authenticate user with password"""
+    try:
+        data = request.get_json()
+        password = data.get('password', '')
+
+        if password == AUTH_PASSWORD:
+            session['authenticated'] = True
+            session['login_time'] = datetime.now().isoformat()
+            return jsonify({'success': True, 'message': 'Logged in successfully'})
+        else:
+            return jsonify({'error': 'Invalid password'}), 401
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    """Log out user"""
+    session.clear()
+    return jsonify({'success': True, 'message': 'Logged out successfully'})
+
+
+@app.route('/api/auth/status', methods=['GET'])
+def auth_status():
+    """Check authentication status"""
+    return jsonify({
+        'authenticated': session.get('authenticated', False),
+        'login_time': session.get('login_time')
+    })
+
+
+# ============ Notification Endpoints ============
+
+@app.route('/api/notifications', methods=['GET'])
+def get_notifications():
+    """Get all notifications"""
+    with notifications_lock:
+        unread_count = sum(1 for n in notifications if not n.get('read'))
+        return jsonify({
+            'notifications': notifications,
+            'unread_count': unread_count
+        })
+
+
+@app.route('/api/notifications/mark-read', methods=['POST'])
+def mark_notifications_read():
+    """Mark notifications as read"""
+    try:
+        data = request.get_json()
+        notification_ids = data.get('ids', [])
+        mark_all = data.get('all', False)
+
+        with notifications_lock:
+            for notification in notifications:
+                if mark_all or notification['id'] in notification_ids:
+                    notification['read'] = True
+            save_notifications()
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/notifications/clear', methods=['POST'])
+def clear_notifications():
+    """Clear all notifications"""
+    global notifications
+    with notifications_lock:
+        notifications = []
+        save_notifications()
+    return jsonify({'success': True})
+
+
+# ============ Claude Code Execution ============
+
+def run_claude_code(job_id, prompt, project_path):
+    """Execute Claude Code in background thread"""
+    try:
+        with jobs_lock:
+            active_jobs[job_id]['status'] = 'running'
+            active_jobs[job_id]['started_at'] = datetime.now().isoformat()
+
+        # Build command
+        cmd = [
+            'claude',
+            '-p', prompt,
+            '--dangerously-skip-permissions',
+            '--allowedTools', CLAUDE_ALLOWED_TOOLS,
+            '--output-format', 'json',
+            '--max-turns', '10'
+        ]
+
+        # Run Claude Code from the project directory
+        working_dir = project_path if project_path and os.path.isdir(project_path) else CLAUDE_WORKING_DIR
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 minute timeout
+            cwd=working_dir,
+            env={**os.environ, 'TERM': 'dumb'}  # Ensure no TTY issues
+        )
+
+        output = result.stdout
+        error = result.stderr
+
+        # Try to parse JSON output
+        claude_response = None
+        try:
+            claude_response = json.loads(output)
+        except json.JSONDecodeError:
+            claude_response = {'result': output}
+
+        # Check for git commits in the output
+        commits = []
+        if 'commit' in output.lower():
+            # Try to extract commit info
+            import re
+            commit_matches = re.findall(r'[a-f0-9]{7,40}', output)
+            commits = list(set(commit_matches))[:5]  # Limit to 5 unique
+
+        # Update job status
+        with jobs_lock:
+            active_jobs[job_id]['status'] = 'completed'
+            active_jobs[job_id]['completed_at'] = datetime.now().isoformat()
+            active_jobs[job_id]['result'] = claude_response.get('result', output)
+            active_jobs[job_id]['commits'] = commits
+            if error:
+                active_jobs[job_id]['error'] = error
+
+        # Create success notification
+        summary = claude_response.get('result', output)[:200]
+        if len(summary) < len(claude_response.get('result', output)):
+            summary += '...'
+
+        add_notification(
+            title='Claude Code Complete',
+            message=f"Task completed: {prompt[:50]}{'...' if len(prompt) > 50 else ''}\n\nSummary: {summary}",
+            notification_type='success',
+            job_id=job_id
+        )
+
+    except subprocess.TimeoutExpired:
+        with jobs_lock:
+            active_jobs[job_id]['status'] = 'timeout'
+            active_jobs[job_id]['error'] = 'Execution timed out after 10 minutes'
+
+        add_notification(
+            title='Claude Code Timeout',
+            message=f"Task timed out: {prompt[:50]}{'...' if len(prompt) > 50 else ''}",
+            notification_type='error',
+            job_id=job_id
+        )
+
+    except Exception as e:
+        with jobs_lock:
+            active_jobs[job_id]['status'] = 'error'
+            active_jobs[job_id]['error'] = str(e)
+
+        add_notification(
+            title='Claude Code Error',
+            message=f"Task failed: {prompt[:50]}{'...' if len(prompt) > 50 else ''}\n\nError: {str(e)}",
+            notification_type='error',
+            job_id=job_id
+        )
+
+
+@app.route('/api/claude/execute', methods=['POST'])
+@require_auth
+def execute_claude():
+    """Execute a Claude Code task with supervisor approval"""
+    try:
+        data = request.get_json()
+        prompt = data.get('prompt', '')
+        project_path = data.get('project', CLAUDE_WORKING_DIR)
+
+        if not prompt:
+            return jsonify({'error': 'No prompt provided'}), 400
+
+        # Create job ID
+        job_id = str(uuid.uuid4())
+
+        # Check with supervisor for approval (if available)
+        approval_required = False
+        try:
+            # Evaluate action with supervisor
+            eval_response = requests.post(
+                f'{SUPERVISOR_URL}/evaluate_action',
+                json={
+                    'action': {
+                        'name': 'claude_execute',
+                        'category': 'code_execution',
+                        'description': f'Execute Claude Code: {prompt[:100]}',
+                        'parameters': {
+                            'prompt': prompt,
+                            'project': project_path
+                        }
+                    },
+                    'context': {
+                        'environment': 'production',
+                        'agentId': 'voice-assistant',
+                        'sessionId': session.get('login_time', 'unknown')
+                    }
+                },
+                timeout=5
+            )
+
+            if eval_response.ok:
+                eval_result = eval_response.json()
+                if eval_result.get('status') == 'denied':
+                    # Create a task for the declined action
+                    try:
+                        requests.post(
+                            f'{SUPERVISOR_URL}/create_task',
+                            json={
+                                'title': f'Review: {prompt[:50]}',
+                                'description': f'This action was requested via voice assistant but declined.\n\nPrompt: {prompt}\n\nReason: {eval_result.get("violations", [])}',
+                                'priority': 'medium',
+                                'labels': ['needs-approval', 'voice-assistant']
+                            },
+                            timeout=5
+                        )
+                    except:
+                        pass
+
+                    return jsonify({
+                        'error': 'Action declined by supervisor',
+                        'reason': eval_result.get('violations', []),
+                        'task_created': True
+                    }), 403
+
+                if eval_result.get('requiresHumanApproval'):
+                    approval_required = True
+
+        except requests.exceptions.RequestException:
+            # Supervisor not available, continue without approval
+            pass
+
+        if approval_required:
+            # Create job in pending state
+            with jobs_lock:
+                active_jobs[job_id] = {
+                    'id': job_id,
+                    'prompt': prompt,
+                    'project': project_path,
+                    'status': 'pending_approval',
+                    'created_at': datetime.now().isoformat()
+                }
+
+            add_notification(
+                title='Approval Required',
+                message=f"Task requires approval: {prompt[:100]}",
+                notification_type='warning',
+                job_id=job_id
+            )
+
+            return jsonify({
+                'job_id': job_id,
+                'status': 'pending_approval',
+                'message': 'This action requires human approval'
+            })
+
+        # Create job
+        with jobs_lock:
+            active_jobs[job_id] = {
+                'id': job_id,
+                'prompt': prompt,
+                'project': project_path,
+                'status': 'queued',
+                'created_at': datetime.now().isoformat()
+            }
+
+        # Start background thread
+        thread = threading.Thread(
+            target=run_claude_code,
+            args=(job_id, prompt, project_path)
+        )
+        thread.daemon = True
+        thread.start()
+
+        add_notification(
+            title='Claude Code Started',
+            message=f"Task started: {prompt[:100]}{'...' if len(prompt) > 100 else ''}",
+            notification_type='info',
+            job_id=job_id
+        )
+
+        return jsonify({
+            'job_id': job_id,
+            'status': 'queued',
+            'message': 'Task started in background'
+        })
+
+    except Exception as e:
+        print(f'Claude execution error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/claude/jobs', methods=['GET'])
+@require_auth
+def list_jobs():
+    """List all Claude Code jobs"""
+    with jobs_lock:
+        jobs_list = list(active_jobs.values())
+    return jsonify({'jobs': jobs_list})
+
+
+@app.route('/api/claude/jobs/<job_id>', methods=['GET'])
+@require_auth
+def get_job(job_id):
+    """Get a specific job status"""
+    with jobs_lock:
+        job = active_jobs.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify(job)
+
+
+@app.route('/api/claude/jobs/<job_id>/approve', methods=['POST'])
+@require_auth
+def approve_job(job_id):
+    """Approve a pending job"""
+    with jobs_lock:
+        job = active_jobs.get(job_id)
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+        if job['status'] != 'pending_approval':
+            return jsonify({'error': 'Job is not pending approval'}), 400
+
+        job['status'] = 'queued'
+        job['approved_at'] = datetime.now().isoformat()
+
+    # Start execution
+    thread = threading.Thread(
+        target=run_claude_code,
+        args=(job_id, job['prompt'], job['project'])
+    )
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({'success': True, 'message': 'Job approved and started'})
 
 
 if __name__ == '__main__':
