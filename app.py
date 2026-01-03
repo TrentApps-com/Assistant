@@ -92,6 +92,80 @@ notifications_lock = threading.Lock()
 active_jobs = {}
 jobs_lock = threading.Lock()
 
+# Projects configuration
+PROJECTS_FILE = os.path.join(os.path.dirname(__file__), 'projects.json')
+projects_config = {}
+
+
+def load_projects_config():
+    """Load projects configuration from file"""
+    global projects_config
+    try:
+        if os.path.exists(PROJECTS_FILE):
+            with open(PROJECTS_FILE, 'r') as f:
+                projects_config = json.load(f)
+                print(f"Loaded {len(projects_config.get('projects', {}))} project configurations")
+        else:
+            projects_config = {'projects': {}, 'default_project': CLAUDE_WORKING_DIR}
+    except Exception as e:
+        print(f'Failed to load projects config: {e}')
+        projects_config = {'projects': {}, 'default_project': CLAUDE_WORKING_DIR}
+
+
+def resolve_project_path(project_input):
+    """
+    Resolve a project name/alias to its actual path.
+
+    Args:
+        project_input: Could be a path, project name, or alias
+
+    Returns:
+        Resolved path string
+    """
+    if not project_input:
+        return projects_config.get('default_project', CLAUDE_WORKING_DIR)
+
+    # If it's already a valid path, use it
+    if os.path.isdir(project_input):
+        return project_input
+
+    # Normalize input for matching
+    normalized = project_input.lower().strip()
+
+    # Check each project's name and aliases
+    for project_id, project_data in projects_config.get('projects', {}).items():
+        # Check project ID
+        if normalized == project_id.lower():
+            return project_data['path']
+
+        # Check aliases
+        for alias in project_data.get('aliases', []):
+            if normalized == alias.lower():
+                return project_data['path']
+
+    # If no match found, try to construct a path
+    potential_path = os.path.join(CLAUDE_WORKING_DIR, project_input)
+    if os.path.isdir(potential_path):
+        return potential_path
+
+    # Default to working directory
+    return projects_config.get('default_project', CLAUDE_WORKING_DIR)
+
+
+def get_projects_summary():
+    """Get a summary of available projects for the AI system prompt"""
+    projects = projects_config.get('projects', {})
+    if not projects:
+        return ""
+
+    lines = ["Available projects:"]
+    for project_id, data in projects.items():
+        aliases = ', '.join(data.get('aliases', [])[:3])  # Show first 3 aliases
+        desc = data.get('description', '')
+        lines.append(f"  - {project_id}: {desc} (aliases: {aliases})")
+
+    return '\n'.join(lines)
+
 
 def load_notifications():
     """Load notifications from file"""
@@ -116,6 +190,7 @@ def save_notifications():
 
 def add_notification(title, message, notification_type='info', job_id=None):
     """Add a notification"""
+    global notifications
     with notifications_lock:
         notification = {
             'id': str(uuid.uuid4()),
@@ -144,8 +219,9 @@ def require_auth(f):
     return decorated_function
 
 
-# Load notifications on startup
+# Load notifications and projects on startup
 load_notifications()
+load_projects_config()
 
 
 def load_passkeys():
@@ -174,23 +250,56 @@ load_passkeys()
 
 
 # System prompt for the assistant with function calling
-SYSTEM_PROMPT = """You are a helpful voice assistant. Keep responses short (1-2 sentences) since they're spoken aloud.
+def get_system_prompt():
+    """Generate system prompt with current project information"""
+    projects_info = get_projects_summary()
+
+    return f"""You are a helpful voice assistant. Keep responses short (1-2 sentences) since they're spoken aloud.
 
 IMPORTANT: You have a special ability to execute coding tasks using Claude Code on the server.
 
-When a user asks you to do ANY coding task (write code, fix bugs, create files, run commands, modify projects, etc.), you MUST respond with ONLY this JSON and nothing else:
+{projects_info}
 
-{"function": "claude_execute", "prompt": "YOUR_DETAILED_TASK_DESCRIPTION"}
+When a user mentions a project by name (like "YourStory", "FormFlow", "the voice assistant", etc.), include the project name in the "project" field of your JSON response. The system will resolve it to the correct path.
 
-Examples of when to use function calling:
-- "Can you fix the login bug?" → {"function": "claude_execute", "prompt": "Fix the login bug"}
-- "Create a new Python script" → {"function": "claude_execute", "prompt": "Create a new Python script"}
-- "Update the CSS styles" → {"function": "claude_execute", "prompt": "Update the CSS styles"}
-- "Run the tests" → {"function": "claude_execute", "prompt": "Run the test suite"}
+You have TWO execution modes:
 
-CRITICAL: When calling a function, output ONLY the JSON object. No explanation, no markdown, no extra text.
+1. QUICK MODE (mode: "quick") - Default for simple tasks
+   - Runs in background
+   - User gets a notification when complete
+   - Use for: quick fixes, simple commands, tests, deployments
 
-For normal conversation (weather, jokes, questions, etc.), respond naturally in 1-2 sentences."""
+2. STREAM MODE (mode: "stream") - For complex tasks or when user wants to watch
+   - Opens a terminal window showing real-time output
+   - User can see progress and approve actions
+   - Use when: user says "show me", "let me watch", "stream it", or for complex multi-step tasks
+
+When a user asks you to do ANY coding task, respond in this format:
+
+1. Brief acknowledgment (spoken aloud)
+2. JSON function call on a new line with mode and project specified
+
+Examples:
+
+User: "Fix the typo in the README"
+Response: I'll fix that typo for you.
+{{"function": "claude_execute", "prompt": "Fix typos in README.md", "mode": "quick"}}
+
+User: "Update the login page in FormFlow"
+Response: I'll update the login page in FormFlow.
+{{"function": "claude_execute", "prompt": "Update the login page styling", "project": "formflow", "mode": "quick"}}
+
+User: "Run the tests in YourStory and show me"
+Response: Let me show you the test results in the terminal.
+{{"function": "claude_execute", "prompt": "Run the test suite", "project": "yourstory", "mode": "stream"}}
+
+User: "Refactor the authentication in the voice assistant"
+Response: That's a complex task. Let me show you the progress.
+{{"function": "claude_execute", "prompt": "Refactor the authentication system", "project": "assistant", "mode": "stream"}}
+
+CRITICAL: The JSON must be on its own line. Include "project" when the user mentions a specific project. Use "stream" for complex tasks or when user wants visibility. Use "quick" for simple, fast tasks.
+
+For normal conversation (weather, jokes, questions), respond naturally in 1-2 sentences without any JSON."""
 
 
 @app.route('/')
@@ -211,7 +320,7 @@ def chat():
             return jsonify({'error': 'No message provided'}), 400
 
         # Build messages for Ollama
-        messages = [{'role': 'system', 'content': SYSTEM_PROMPT}]
+        messages = [{'role': 'system', 'content': get_system_prompt()}]
         messages.extend(conversation_history)
         messages.append({'role': 'user', 'content': user_message})
 
@@ -256,7 +365,7 @@ def chat_stream():
             return jsonify({'error': 'No message provided'}), 400
 
         # Build messages for Ollama
-        messages = [{'role': 'system', 'content': SYSTEM_PROMPT}]
+        messages = [{'role': 'system', 'content': get_system_prompt()}]
         messages.extend(conversation_history)
         messages.append({'role': 'user', 'content': user_message})
 
@@ -590,7 +699,7 @@ def passkey_auth_options():
         options = {
             'challenge': challenge_b64,
             'challenge_id': challenge_id,
-            'rpId': PASSKEY_RP_ID,
+            'rpId': get_passkey_rp_id(),
             'timeout': 60000,
             'userVerification': 'preferred',
             'allowCredentials': allow_credentials
@@ -833,7 +942,10 @@ def execute_claude():
     try:
         data = request.get_json()
         prompt = data.get('prompt', '')
-        project_path = data.get('project', CLAUDE_WORKING_DIR)
+        project_input = data.get('project', '')
+
+        # Resolve project name/alias to actual path
+        project_path = resolve_project_path(project_input)
 
         if not prompt:
             return jsonify({'error': 'No prompt provided'}), 400
@@ -1000,6 +1112,530 @@ def approve_job(job_id):
     thread.start()
 
     return jsonify({'success': True, 'message': 'Job approved and started'})
+
+
+# ============ Streaming Claude Code Execution ============
+
+# Store streaming session state for approvals
+streaming_sessions = {}
+streaming_sessions_lock = threading.Lock()
+
+
+def generate_progress_summary(events):
+    """Generate periodic summary for AI consumption - conversational style"""
+    tools_used = []
+    files_modified = []
+    files_read = []
+    errors = []
+    bash_commands = []
+
+    for event in events:
+        event_type = event.get('type', '')
+
+        if event_type == 'assistant':
+            message = event.get('message', event)
+            for content in message.get('content', []):
+                content_type = content.get('type', '')
+                if content_type == 'tool_use':
+                    tool_name = content.get('name', 'unknown')
+                    tools_used.append(tool_name)
+                    tool_input = content.get('input', {})
+                    if tool_name in ['Write', 'Edit']:
+                        file_path = tool_input.get('file_path', '')
+                        if file_path:
+                            # Get just the filename for readability
+                            filename = file_path.split('/')[-1]
+                            files_modified.append(filename)
+                    elif tool_name == 'Read':
+                        file_path = tool_input.get('file_path', '')
+                        if file_path:
+                            filename = file_path.split('/')[-1]
+                            files_read.append(filename)
+                    elif tool_name == 'Bash':
+                        cmd = tool_input.get('command', '')[:50]
+                        if cmd:
+                            bash_commands.append(cmd)
+
+        elif event_type == 'system':
+            subtype = event.get('subtype', '')
+            if 'error' in subtype.lower():
+                errors.append(event.get('data', {}).get('message', 'Unknown error'))
+
+    # Generate conversational summary
+    unique_modified = list(set(files_modified))
+    unique_read = list(set(files_read))
+
+    parts = []
+    if unique_modified:
+        if len(unique_modified) == 1:
+            parts.append(f"updated {unique_modified[0]}")
+        elif len(unique_modified) <= 3:
+            parts.append(f"updated {', '.join(unique_modified)}")
+        else:
+            parts.append(f"updated {len(unique_modified)} files")
+
+    if unique_read and not unique_modified:
+        if len(unique_read) <= 2:
+            parts.append(f"reading {', '.join(unique_read)}")
+        else:
+            parts.append(f"reviewing {len(unique_read)} files")
+
+    if bash_commands:
+        parts.append("running commands")
+
+    if errors:
+        parts.append(f"encountered {len(errors)} error{'s' if len(errors) > 1 else ''}")
+
+    conversational = "Claude is still working"
+    if parts:
+        conversational = f"Claude has {' and '.join(parts)}"
+
+    return {
+        'tools_used': list(set(tools_used)),
+        'files_modified': unique_modified[:10],
+        'files_read': unique_read[:10],
+        'error_count': len(errors),
+        'event_count': len(events),
+        'conversational': conversational
+    }
+
+
+def generate_completion_summary(all_events):
+    """Generate a conversational summary of what was accomplished"""
+    files_modified = set()
+    files_created = set()
+    files_read = set()
+    bash_commands = []
+    errors = []
+    final_result = None
+
+    for event in all_events:
+        event_type = event.get('type', '')
+
+        if event_type == 'assistant':
+            message = event.get('message', event)
+            for content in message.get('content', []):
+                if isinstance(content, dict) and content.get('type') == 'tool_use':
+                    tool_name = content.get('name', '')
+                    tool_input = content.get('input', {})
+
+                    if tool_name == 'Write':
+                        file_path = tool_input.get('file_path', '')
+                        if file_path:
+                            files_created.add(file_path.split('/')[-1])
+                    elif tool_name == 'Edit':
+                        file_path = tool_input.get('file_path', '')
+                        if file_path:
+                            files_modified.add(file_path.split('/')[-1])
+                    elif tool_name == 'Read':
+                        file_path = tool_input.get('file_path', '')
+                        if file_path:
+                            files_read.add(file_path.split('/')[-1])
+                    elif tool_name == 'Bash':
+                        cmd = tool_input.get('command', '')
+                        if cmd:
+                            bash_commands.append(cmd.split()[0] if cmd else '')
+
+        elif event_type == 'result':
+            result = event.get('result', '')
+            if isinstance(result, dict):
+                final_result = result.get('text', str(result))
+            else:
+                final_result = str(result) if result else None
+
+    # Build conversational summary
+    parts = []
+
+    if files_modified or files_created:
+        all_files = list(files_modified | files_created)
+        if len(all_files) == 1:
+            parts.append(f"updated {all_files[0]}")
+        elif len(all_files) <= 3:
+            parts.append(f"updated {', '.join(all_files)}")
+        else:
+            parts.append(f"updated {len(all_files)} files")
+
+    unique_cmds = list(set(bash_commands))
+    if unique_cmds:
+        if 'git' in unique_cmds:
+            parts.append("made git changes")
+        if 'npm' in unique_cmds or 'yarn' in unique_cmds:
+            parts.append("ran package commands")
+        if 'python' in unique_cmds or 'pytest' in unique_cmds:
+            parts.append("ran Python scripts")
+
+    if not parts:
+        if files_read:
+            parts.append(f"reviewed {len(files_read)} files")
+        else:
+            parts.append("completed the task")
+
+    summary = f"Claude has {' and '.join(parts)}."
+
+    # Add final result snippet if available and not too long/code-like
+    if final_result and len(final_result) < 200:
+        # Avoid code-like content
+        if not any(c in final_result for c in ['{', '}', 'def ', 'function ', 'import ', 'const ']):
+            summary += f" {final_result[:150]}"
+
+    return {
+        'text': summary,
+        'files_modified': list(files_modified | files_created),
+        'files_read': list(files_read),
+        'commands_run': len(bash_commands)
+    }
+
+
+def is_permission_request(event):
+    """Detect if event is requesting user permission/approval"""
+    event_type = event.get('type', '')
+    subtype = event.get('subtype', '')
+
+    # Check for permission-related events
+    if event_type == 'system':
+        if 'permission' in subtype.lower() or 'approval' in subtype.lower():
+            return True
+        if subtype == 'input_request':
+            return True
+
+    # Check for tool use that might need approval
+    if event_type == 'assistant':
+        for content in event.get('content', []):
+            if content.get('type') == 'tool_use':
+                tool_name = content.get('name', '')
+                # These tools often need approval in non-skip-permissions mode
+                if tool_name in ['Bash', 'Write', 'Edit']:
+                    tool_input = content.get('input', {})
+                    # Check for potentially dangerous operations
+                    if tool_name == 'Bash':
+                        cmd = tool_input.get('command', '')
+                        if any(danger in cmd for danger in ['rm ', 'sudo', 'chmod', 'chown']):
+                            return True
+
+    return False
+
+
+@app.route('/api/claude/stream', methods=['GET'])
+@require_auth
+def stream_claude():
+    """Stream Claude Code execution output via SSE
+
+    Uses GET with query params because EventSource only supports GET.
+    Query params: prompt, project, resume (optional Claude session ID to resume)
+    """
+    prompt = request.args.get('prompt', '')
+    project_input = request.args.get('project', '')
+    resume_session = request.args.get('resume', '')  # Claude session ID to resume
+
+    # Resolve project name/alias to actual path
+    project_path = resolve_project_path(project_input)
+
+    if not prompt and not resume_session:
+        return jsonify({'error': 'No prompt or resume session provided'}), 400
+
+    session_id = str(uuid.uuid4())
+
+    def generate():
+        # Initialize session state
+        with streaming_sessions_lock:
+            streaming_sessions[session_id] = {
+                'status': 'running',
+                'approval_pending': False,
+                'approval_response': None,
+                'process': None
+            }
+
+        # Build command - use stream-json for real-time output
+        cmd = ['claude']
+
+        if resume_session:
+            # Resume an existing Claude session
+            cmd.extend(['--resume', resume_session])
+            if prompt:
+                cmd.extend(['-p', prompt])
+        else:
+            # New session
+            cmd.extend(['-p', prompt])
+
+        cmd.extend([
+            '--output-format', 'stream-json',
+            '--verbose',  # Required for stream-json with -p
+            '--allowedTools', CLAUDE_ALLOWED_TOOLS,
+            '--max-turns', '20'
+        ])
+
+        # Determine working directory
+        working_dir = project_path if project_path and os.path.isdir(project_path) else CLAUDE_WORKING_DIR
+
+        try:
+            # Send session start event
+            yield f"data: {json.dumps({'type': 'session_start', 'session_id': session_id})}\n\n"
+
+            # Start process with Popen for streaming
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=working_dir,
+                bufsize=1,  # Line buffered
+                env={**os.environ, 'TERM': 'dumb'}
+            )
+
+            with streaming_sessions_lock:
+                streaming_sessions[session_id]['process'] = process
+
+            # Track for summaries
+            output_buffer = []  # For periodic summaries (cleared each time)
+            all_events = []  # For final completion summary (never cleared)
+            last_summary_time = time.time()
+            line_count = 0
+            claude_session_id = None  # Claude's internal session ID for resume
+
+            # Read output line by line
+            for line in iter(process.stdout.readline, ''):
+                if not line:
+                    break
+
+                line = line.strip()
+                if not line:
+                    continue
+
+                line_count += 1
+
+                # Try to parse as JSON
+                try:
+                    event = json.loads(line)
+                    event_type = event.get('type', 'unknown')
+
+                    # Determine line type for styling
+                    line_type = 'assistant'
+                    content = ''
+
+                    if event_type == 'system':
+                        line_type = 'system'
+                        content = event.get('message', str(event.get('data', '')))
+                        # Try to capture Claude's session ID for resume capability
+                        if 'session_id' in str(event):
+                            sid = event.get('session_id') or event.get('data', {}).get('session_id')
+                            if sid:
+                                claude_session_id = sid
+
+                    elif event_type == 'assistant':
+                        # Assistant message with content blocks
+                        message = event.get('message', event)
+                        content_blocks = message.get('content', [])
+                        for block in content_blocks:
+                            if isinstance(block, dict):
+                                if block.get('type') == 'text':
+                                    content += block.get('text', '')
+                                elif block.get('type') == 'tool_use':
+                                    line_type = 'tool'
+                                    tool_name = block.get('name', 'unknown')
+                                    tool_input = block.get('input', {})
+                                    # Format tool call nicely
+                                    if tool_name == 'Bash':
+                                        cmd = tool_input.get('command', '')[:80]
+                                        content = f"$ {cmd}"
+                                    elif tool_name in ['Read', 'Write', 'Edit', 'Glob', 'Grep']:
+                                        file_path = tool_input.get('file_path', tool_input.get('path', tool_input.get('pattern', '')))
+                                        content = f"[{tool_name}] {file_path}"
+                                    else:
+                                        content = f"[{tool_name}]"
+                                elif block.get('type') == 'thinking':
+                                    line_type = 'thinking'
+                                    content = block.get('thinking', '')[:200]
+
+                    elif event_type == 'user':
+                        # User message - typically contains tool_result
+                        message = event.get('message', {})
+                        content_blocks = message.get('content', [])
+                        for block in content_blocks:
+                            if isinstance(block, dict):
+                                if block.get('type') == 'tool_result':
+                                    line_type = 'tool-result'
+                                    result_content = block.get('content', '')
+                                    # Handle content that could be string or list
+                                    if isinstance(result_content, list):
+                                        # Extract text from content blocks
+                                        texts = []
+                                        for item in result_content:
+                                            if isinstance(item, dict) and item.get('type') == 'text':
+                                                texts.append(item.get('text', ''))
+                                        result_content = '\n'.join(texts)
+                                    # Truncate long results but show useful portion
+                                    if len(result_content) > 300:
+                                        content = result_content[:300] + '...'
+                                    else:
+                                        content = result_content
+                                elif block.get('type') == 'text':
+                                    content += block.get('text', '')
+
+                    elif event_type == 'tool_result':
+                        line_type = 'tool-result'
+                        content = str(event.get('content', ''))[:300]
+
+                    elif event_type == 'result':
+                        subtype = event.get('subtype', '')
+                        if subtype == 'success':
+                            line_type = 'success'
+                            result = event.get('result', '')
+                            if isinstance(result, dict):
+                                content = result.get('text', str(result))[:500]
+                            else:
+                                content = str(result)[:500]
+                        else:
+                            line_type = 'error'
+                            content = event.get('error', event.get('result', ''))[:300]
+
+                    else:
+                        # Unknown type - show abbreviated JSON
+                        content = json.dumps(event)[:200]
+
+                    # Only send if we have content
+                    if content:
+                        yield f"data: {json.dumps({'type': 'output', 'content': content, 'line_type': line_type})}\n\n"
+
+                    # Track for summaries
+                    output_buffer.append(event)
+                    all_events.append(event)  # Keep all events for final summary
+
+                    # Check for permission/approval requests
+                    if is_permission_request(event):
+                        with streaming_sessions_lock:
+                            streaming_sessions[session_id]['approval_pending'] = True
+
+                        # Build approval message
+                        approval_msg = 'Claude needs permission to continue.'
+                        if event_type == 'assistant':
+                            for block in event.get('content', []):
+                                if isinstance(block, dict) and block.get('type') == 'tool_use':
+                                    tool_input = block.get('input', {})
+                                    if 'command' in tool_input:
+                                        approval_msg = f"Run: {tool_input['command'][:100]}"
+                                    elif 'file_path' in tool_input:
+                                        approval_msg = f"Access: {tool_input['file_path']}"
+
+                        yield f"data: {json.dumps({'type': 'approval_needed', 'message': approval_msg, 'session_id': session_id})}\n\n"
+
+                        # Wait for approval (poll every 500ms, timeout after 5 minutes)
+                        approval_timeout = 300  # 5 minutes
+                        start_wait = time.time()
+                        while time.time() - start_wait < approval_timeout:
+                            with streaming_sessions_lock:
+                                session_state = streaming_sessions.get(session_id, {})
+                                if session_state.get('approval_response') is not None:
+                                    approved = session_state['approval_response']
+                                    session_state['approval_pending'] = False
+                                    session_state['approval_response'] = None
+                                    break
+                            time.sleep(0.5)
+                        else:
+                            # Timeout - deny by default
+                            approved = False
+                            yield f"data: {json.dumps({'type': 'approval_timeout'})}\n\n"
+
+                        # Note: In a real implementation, you'd send the approval to Claude's stdin
+                        # For now, we just continue (Claude will handle based on --allowedTools)
+
+                    # Periodic summary every 30 seconds
+                    if time.time() - last_summary_time > 30 and output_buffer:
+                        summary = generate_progress_summary(output_buffer)
+                        yield f"data: {json.dumps({'type': 'summary', 'summary': summary})}\n\n"
+                        output_buffer = []
+                        last_summary_time = time.time()
+
+                except json.JSONDecodeError:
+                    # Raw text line (not JSON)
+                    yield f"data: {json.dumps({'type': 'raw', 'line': line})}\n\n"
+
+            # Wait for process to complete
+            process.wait()
+
+            # Generate final completion summary from all events
+            completion_summary = generate_completion_summary(all_events)
+
+            # Send completion event with summary and Claude session ID
+            exit_code = process.returncode
+            success = exit_code == 0
+
+            yield f"data: {json.dumps({'type': 'complete', 'exit_code': exit_code, 'success': success, 'total_lines': line_count, 'summary': completion_summary, 'claude_session_id': claude_session_id})}\n\n"
+
+            # Store Claude session ID in streaming_sessions for potential resume
+            with streaming_sessions_lock:
+                if session_id in streaming_sessions:
+                    streaming_sessions[session_id]['claude_session_id'] = claude_session_id
+
+            # Create notification with conversational summary
+            notification_msg = completion_summary['text'] if success else f"Task failed: {prompt[:50]}{'...' if len(prompt) > 50 else ''}"
+            add_notification(
+                title='Claude Code Complete' if success else 'Claude Code Failed',
+                message=notification_msg,
+                notification_type='success' if success else 'error',
+                job_id=session_id
+            )
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            add_notification(
+                title='Claude Code Error',
+                message=f"Task failed: {str(e)[:100]}",
+                notification_type='error',
+                job_id=session_id
+            )
+
+        finally:
+            # Cleanup session
+            with streaming_sessions_lock:
+                if session_id in streaming_sessions:
+                    del streaming_sessions[session_id]
+
+    return Response(generate(), mimetype='text/event-stream')
+
+
+@app.route('/api/claude/stream/approve', methods=['POST'])
+@require_auth
+def approve_stream_action():
+    """Send approval/denial for a streaming Claude session"""
+    data = request.get_json()
+    session_id = data.get('session_id')
+    approved = data.get('approved', False)
+
+    if not session_id:
+        return jsonify({'error': 'No session_id provided'}), 400
+
+    with streaming_sessions_lock:
+        if session_id not in streaming_sessions:
+            return jsonify({'error': 'Session not found or already completed'}), 404
+
+        session_state = streaming_sessions[session_id]
+        if not session_state.get('approval_pending'):
+            return jsonify({'error': 'No approval pending for this session'}), 400
+
+        session_state['approval_response'] = approved
+
+    return jsonify({
+        'success': True,
+        'approved': approved,
+        'message': 'Approval recorded'
+    })
+
+
+@app.route('/api/claude/stream/status/<session_id>', methods=['GET'])
+@require_auth
+def get_stream_status(session_id):
+    """Get status of a streaming session"""
+    with streaming_sessions_lock:
+        if session_id not in streaming_sessions:
+            return jsonify({'error': 'Session not found', 'exists': False}), 404
+
+        session_state = streaming_sessions[session_id]
+        return jsonify({
+            'exists': True,
+            'status': session_state.get('status'),
+            'approval_pending': session_state.get('approval_pending', False)
+        })
 
 
 if __name__ == '__main__':

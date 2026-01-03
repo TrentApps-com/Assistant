@@ -55,12 +55,12 @@ class NeonOrb {
     }
 
     createOrb() {
-        // NO SOLID SHELL - Pure ethereal particle-based AI orb
-        // Store color uniforms for state changes (used by particle systems)
+        // NO SOLID SHELL - Pure ethereal stellar orb
+        // Store color uniforms for state changes (cosmic palette)
         this.stateColors = {
-            c1: new THREE.Color(0x00ffff),
-            c2: new THREE.Color(0x8b5cf6),
-            c3: new THREE.Color(0xec4899)
+            c1: new THREE.Color(0x4a90d9), // Stellar blue
+            c2: new THREE.Color(0x9b59b6), // Nebula purple
+            c3: new THREE.Color(0xe74c8c)  // Cosmic magenta
         };
 
         // ===== ETHEREAL EDGE GLOW ONLY (no solid sphere) =====
@@ -110,10 +110,10 @@ class NeonOrb {
                 }
             `,
             uniforms: {
-                uColor1: { value: new THREE.Color(0x00ffff) },
-                uColor2: { value: new THREE.Color(0xec4899) },
+                uColor1: { value: new THREE.Color(0x5a9fd9) }, // Stellar blue
+                uColor2: { value: new THREE.Color(0xc97dd9) }, // Nebula pink
                 uTime: { value: 0 },
-                uIntensity: { value: 0.8 },
+                uIntensity: { value: 0.7 },
                 uAudioLevel: { value: 0 }
             },
             transparent: true,
@@ -152,8 +152,8 @@ class NeonOrb {
                 }
             `,
             uniforms: {
-                uColor: { value: new THREE.Color(0x00ffff) },
-                uIntensity: { value: 0.7 },
+                uColor: { value: new THREE.Color(0x6a8fd9) }, // Soft stellar blue
+                uIntensity: { value: 0.6 },
                 uTime: { value: 0 },
                 uAudioLevel: { value: 0 }
             },
@@ -169,28 +169,56 @@ class NeonOrb {
     }
 
     createMeshBall() {
-        // High-resolution inner particle cloud - 8K quality plasma/nebula effect
-        const innerParticleCount = 1200; // Increased for HD quality
+        // ========================================
+        // STELLAR NEBULA - Deep space aesthetic
+        // Ethereal nebula clouds with twinkling stars
+        // Inspired by Hubble telescope imagery
+        // ========================================
+        const innerParticleCount = 1800; // Dense nebula field
         const innerPositions = new Float32Array(innerParticleCount * 3);
         const innerSizes = new Float32Array(innerParticleCount);
         const innerPhases = new Float32Array(innerParticleCount);
-        const innerLayers = new Float32Array(innerParticleCount); // For layered coloring
+        const innerLayers = new Float32Array(innerParticleCount);
+        const innerTwinkle = new Float32Array(innerParticleCount); // Twinkle speed for stars
+        const innerIsStar = new Float32Array(innerParticleCount); // 1.0 = star, 0.0 = dust
 
         for (let i = 0; i < innerParticleCount; i++) {
-            // Distribute in concentric layers with concentration toward center
+            // Create nebula structure with dense core and wispy edges
             const layer = Math.random();
-            const r = Math.pow(layer, 0.4) * 0.75; // More particles near center
-            const theta = Math.random() * Math.PI * 2;
+
+            // Spiral arm structure for nebula wisps
+            const armCount = 3;
+            const armAngle = (i / innerParticleCount) * Math.PI * 2 * armCount;
+            const armSpread = Math.pow(Math.random(), 0.4) * 0.4; // Concentrated in arms
+
+            // Distance from center - denser toward core
+            const r = Math.pow(layer, 0.25) * 0.85;
+            const theta = armAngle + armSpread + Math.random() * 0.3;
             const phi = Math.acos(2 * Math.random() - 1);
 
+            // Add some vertical flattening for disk-like nebula shape
+            const flattenY = 0.7 + Math.random() * 0.3;
+
             innerPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-            innerPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+            innerPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta) * flattenY;
             innerPositions[i * 3 + 2] = r * Math.cos(phi);
 
-            // Vary sizes for depth perception - smaller particles create finer detail
-            innerSizes[i] = Math.random() * 0.06 + 0.015;
+            // 20% are stars (small, bright, twinkling), rest are nebula dust (larger, softer)
+            const isStar = Math.random() < 0.2;
+            innerIsStar[i] = isStar ? 1.0 : 0.0;
+
+            if (isStar) {
+                // Stars: tiny bright points
+                innerSizes[i] = Math.random() * 0.015 + 0.008;
+                innerTwinkle[i] = Math.random() * 4.0 + 2.0; // Fast twinkle
+            } else {
+                // Nebula dust: larger, softer particles
+                innerSizes[i] = Math.random() * 0.1 + 0.04;
+                innerTwinkle[i] = 0.0; // No twinkle
+            }
+
             innerPhases[i] = Math.random() * Math.PI * 2;
-            innerLayers[i] = layer; // Store layer for color mixing
+            innerLayers[i] = layer;
         }
 
         const innerGeometry = new THREE.BufferGeometry();
@@ -198,19 +226,25 @@ class NeonOrb {
         innerGeometry.setAttribute('size', new THREE.BufferAttribute(innerSizes, 1));
         innerGeometry.setAttribute('phase', new THREE.BufferAttribute(innerPhases, 1));
         innerGeometry.setAttribute('layer', new THREE.BufferAttribute(innerLayers, 1));
+        innerGeometry.setAttribute('twinkle', new THREE.BufferAttribute(innerTwinkle, 1));
+        innerGeometry.setAttribute('isStar', new THREE.BufferAttribute(innerIsStar, 1));
 
         this.innerCloudMaterial = new THREE.ShaderMaterial({
             vertexShader: `
                 attribute float size;
                 attribute float phase;
                 attribute float layer;
+                attribute float twinkle;
+                attribute float isStar;
                 varying float vAlpha;
                 varying float vLayer;
                 varying float vDist;
+                varying float vIsStar;
+                varying float vTwinkle;
                 uniform float uTime;
                 uniform float uAudioLevel;
 
-                // High quality noise
+                // High quality noise for nebula flow
                 float hash(vec3 p) {
                     p = fract(p * 0.3183099 + vec3(0.1, 0.1, 0.1));
                     p *= 17.0;
@@ -242,35 +276,34 @@ class NeonOrb {
 
                 void main() {
                     vLayer = layer;
+                    vIsStar = isStar;
+                    vTwinkle = twinkle;
                     vec3 pos = position;
                     float dist = length(position);
                     vDist = dist;
 
                     // ============================================
-                    // ALWAYS-FLOWING ORGANIC CLOUD
-                    // The cloud is ALIVE - constantly moving even when idle
-                    // Audio makes it more energetic, not triggers it
+                    // COSMIC NEBULA MOTION
+                    // Slow, majestic cosmic drift with twinkling stars
                     // ============================================
 
-                    // BASE time - always advancing at visible speed
-                    float baseTime = uTime * 0.6;
-                    // ACTIVE time - speeds up with audio
-                    float activeTime = uTime * (0.6 + uAudioLevel * 0.5);
+                    // Slower, more majestic time for space feel
+                    float baseTime = uTime * 0.35;
+                    float activeTime = uTime * (0.35 + uAudioLevel * 0.4);
 
-                    // === LAYER 1: GLOBAL DRIFT ===
-                    // Large, slow, always-visible sweeping motion
-                    // Like clouds drifting across the sky
-                    float driftScale = 0.12 + uAudioLevel * 0.06;
-                    vec3 globalDrift = vec3(
-                        sin(baseTime * 0.4 + phase * 3.0 + dist * 2.0) * driftScale,
-                        cos(baseTime * 0.35 + phase * 2.5 + layer * 4.0) * driftScale * 0.8,
-                        sin(baseTime * 0.3 + phase * 2.0) * driftScale * 0.7
+                    // === NEBULA DRIFT ===
+                    // Slow, sweeping cosmic motion
+                    float driftScale = 0.08 + uAudioLevel * 0.04;
+                    vec3 cosmicDrift = vec3(
+                        sin(baseTime * 0.25 + phase * 2.0 + dist * 1.5) * driftScale,
+                        cos(baseTime * 0.2 + phase * 1.8 + layer * 3.0) * driftScale * 0.6,
+                        sin(baseTime * 0.18 + phase * 1.5) * driftScale * 0.5
                     );
-                    pos += globalDrift;
+                    pos += cosmicDrift;
 
-                    // === LAYER 2: SWIRLING FLOW FIELD ===
-                    // Noise-based currents - always active, intensifies with audio
-                    vec3 samplePos = position * 1.8 + baseTime * 0.5;
+                    // === NEBULA FLOW FIELD ===
+                    // Smoother, more graceful flow
+                    vec3 samplePos = position * 1.2 + baseTime * 0.3;
                     float nx = fbm(samplePos);
                     float ny = fbm(samplePos + vec3(31.416, 0.0, 0.0));
                     float nz = fbm(samplePos + vec3(0.0, 31.416, 0.0));
@@ -278,79 +311,61 @@ class NeonOrb {
                     vec3 flow = vec3(nx - 0.5, ny - 0.5, nz - 0.5);
                     vec3 curl = cross(normalize(pos + vec3(0.001)), flow);
 
-                    // Strong base flow - ALWAYS visible, stronger with audio
-                    float flowStrength = 0.28 + uAudioLevel * 0.25;
-                    float curlStrength = 0.18 + uAudioLevel * 0.2;
+                    float flowStrength = 0.18 + uAudioLevel * 0.15;
+                    float curlStrength = 0.12 + uAudioLevel * 0.12;
 
-                    pos += flow * flowStrength * (0.6 + phase * 0.4);
-                    pos += curl * curlStrength * (0.5 + layer * 0.5);
+                    // Nebula dust flows more, stars flow less
+                    float flowMult = mix(1.0, 0.3, isStar);
+                    pos += flow * flowStrength * flowMult * (0.5 + phase * 0.5);
+                    pos += curl * curlStrength * flowMult * (0.4 + layer * 0.6);
 
-                    // === LAYER 3: INDIVIDUAL ORBITS ===
-                    // Each particle traces its own elliptical path
-                    float orbitSpeed = 0.6 + phase * 0.5 + uAudioLevel * 0.6;
+                    // === GENTLE ORBITAL MOTION ===
+                    float orbitSpeed = 0.3 + phase * 0.3 + uAudioLevel * 0.4;
                     float orbitPhase = activeTime * orbitSpeed + phase * 6.28;
-                    float orbitSize = 0.055 + uAudioLevel * 0.06;
+                    float orbitSize = 0.04 + uAudioLevel * 0.04;
+                    orbitSize *= mix(1.0, 0.2, isStar); // Stars barely move
 
-                    float ox = sin(orbitPhase) * orbitSize;
-                    float oy = sin(orbitPhase * 1.4 + phase * 2.0) * orbitSize * 0.8;
-                    float oz = cos(orbitPhase * 0.9 + phase) * orbitSize;
+                    pos.x += sin(orbitPhase) * orbitSize * cos(phase * 3.14);
+                    pos.y += sin(orbitPhase * 1.3 + phase) * orbitSize * 0.7;
+                    pos.z += cos(orbitPhase * 0.8 + phase) * orbitSize;
 
-                    pos.x += ox * cos(phase * 3.14);
-                    pos.y += oy;
-                    pos.z += oz * sin(phase * 3.14);
-
-                    // === LAYER 4: BREATHING EXPANSION ===
-                    // Gentle radial pulsing - always breathing
-                    float breathPhase = activeTime * 1.8 + phase * 6.28 + dist * 2.5;
-                    float breathAmp = 0.09 * (0.8 + uAudioLevel * 0.4);
-                    float breathe = sin(breathPhase) * breathAmp;
+                    // === COSMIC BREATHING ===
+                    float breathPhase = activeTime * 1.2 + phase * 6.28 + dist * 2.0;
+                    float breathAmp = 0.06 * (0.7 + uAudioLevel * 0.4);
+                    float breathe = sin(breathPhase) * breathAmp * mix(1.0, 0.15, isStar);
                     pos += normalize(pos + vec3(0.001)) * breathe;
 
-                    // === LAYER 5: VORTEX SWIRL ===
-                    // Differential rotation - inner and outer move differently
-                    float vortexStrength = 0.08 + uAudioLevel * 0.12;
-                    float vortexAngle = atan(pos.z, pos.x);
-                    float vortexRadius = length(pos.xz);
-                    // Velocity shear: particles at different distances rotate at different rates
-                    float angularVel = (0.6 - dist) * vortexStrength * sin(baseTime + phase * 2.0);
-                    vortexAngle += angularVel;
+                    // === SLOW GALACTIC ROTATION ===
+                    float rotSpeed = 0.04 + uAudioLevel * 0.06;
+                    float rotAngle = atan(pos.z, pos.x) + baseTime * rotSpeed * (0.8 - dist * 0.3);
+                    float rotRadius = length(pos.xz);
+                    pos.x = cos(rotAngle) * rotRadius;
+                    pos.z = sin(rotAngle) * rotRadius;
 
-                    vec3 swirledPos = pos;
-                    swirledPos.x = cos(vortexAngle) * vortexRadius;
-                    swirledPos.z = sin(vortexAngle) * vortexRadius;
-
-                    // Blend swirl with flow - more swirl toward center
-                    float swirlBlend = 0.4 + (1.0 - dist) * 0.3 + uAudioLevel * 0.2;
-                    pos.x = mix(pos.x, swirledPos.x, swirlBlend);
-                    pos.z = mix(pos.z, swirledPos.z, swirlBlend);
-
-                    // === LAYER 6: FINE TURBULENCE ===
-                    // Small-scale organic jitter - always present
-                    float jitter = 0.04 + uAudioLevel * 0.04;
-                    float turbTime = activeTime * 2.0;
-                    pos.x += (noise(pos * 6.0 + turbTime) - 0.5) * jitter;
-                    pos.y += (noise(pos * 6.0 + turbTime + 50.0) - 0.5) * jitter;
-                    pos.z += (noise(pos * 6.0 + turbTime + 100.0) - 0.5) * jitter;
-
-                    // === LAYER 7: SECONDARY WAVE ===
-                    // Additional sine wave motion for extra organic feel
-                    float wave = sin(baseTime * 0.8 + dist * 5.0 + phase * 4.0) * 0.03;
-                    float wave2 = cos(baseTime * 0.6 + layer * 6.0) * 0.025;
-                    pos.x += wave * cos(phase * 6.28);
-                    pos.y += wave2;
-                    pos.z += wave * sin(phase * 6.28);
+                    // === STAR TWINKLE EFFECT ===
+                    float twinkleBrightness = 1.0;
+                    if (isStar > 0.5) {
+                        // Stars twinkle with irregular pattern
+                        float t1 = sin(uTime * twinkle + phase * 10.0);
+                        float t2 = sin(uTime * twinkle * 1.3 + phase * 7.0);
+                        float t3 = sin(uTime * twinkle * 0.7 + phase * 13.0);
+                        twinkleBrightness = 0.4 + (t1 * t2 * t3 + 1.0) * 0.4;
+                    }
 
                     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
-                    // Size varies organically
-                    float sizeMultiplier = 0.85 + (1.0 - dist) * 0.4;
-                    sizeMultiplier *= 0.75 + layer * 0.45;
-                    sizeMultiplier += uAudioLevel * 0.15;
-                    gl_PointSize = size * (260.0 / -mvPosition.z) * sizeMultiplier;
+                    // Size: stars are sharper, nebula is softer
+                    float sizeMultiplier = 0.8 + (1.0 - dist) * 0.35;
+                    sizeMultiplier *= 0.7 + layer * 0.5;
+                    sizeMultiplier += uAudioLevel * 0.12;
+                    sizeMultiplier *= twinkleBrightness;
+                    gl_PointSize = size * (280.0 / -mvPosition.z) * sizeMultiplier;
 
-                    // Alpha - always visible, brighter when active
-                    vAlpha = 0.55 + uAudioLevel * 0.3;
-                    vAlpha *= 0.65 + (1.0 - dist) * 0.45;
+                    // Alpha: nebula is softer, stars are brighter
+                    float baseAlpha = mix(0.45, 0.9, isStar);
+                    vAlpha = baseAlpha + uAudioLevel * 0.25;
+                    vAlpha *= 0.6 + (1.0 - dist) * 0.5;
+                    vAlpha *= twinkleBrightness;
 
                     gl_Position = projectionMatrix * mvPosition;
                 }
@@ -359,6 +374,8 @@ class NeonOrb {
                 varying float vAlpha;
                 varying float vLayer;
                 varying float vDist;
+                varying float vIsStar;
+                varying float vTwinkle;
                 uniform vec3 uColor1;
                 uniform vec3 uColor2;
                 uniform vec3 uColor3;
@@ -368,13 +385,24 @@ class NeonOrb {
                     float dist = length(gl_PointCoord - vec2(0.5));
                     if (dist > 0.5) discard;
 
-                    // Ultra-soft glow falloff for HD quality
-                    float glow = smoothstep(0.5, 0.0, dist);
-                    float innerGlow = smoothstep(0.25, 0.0, dist);
-                    float coreGlow = smoothstep(0.1, 0.0, dist);
+                    // Different falloff for stars vs nebula
+                    float glow, innerGlow, coreGlow;
 
-                    // Dynamic color mixing based on layer and time
-                    float colorMix = vLayer + sin(uTime * 0.5 + vLayer * 6.28) * 0.2;
+                    if (vIsStar > 0.5) {
+                        // Stars: sharp bright points with subtle glow
+                        glow = smoothstep(0.5, 0.1, dist);
+                        innerGlow = smoothstep(0.2, 0.0, dist);
+                        coreGlow = smoothstep(0.08, 0.0, dist);
+                    } else {
+                        // Nebula dust: very soft, diffuse glow
+                        glow = smoothstep(0.5, 0.0, dist);
+                        glow = glow * glow; // Even softer falloff
+                        innerGlow = smoothstep(0.3, 0.0, dist);
+                        coreGlow = smoothstep(0.15, 0.0, dist);
+                    }
+
+                    // Dynamic nebula color mixing
+                    float colorMix = vLayer + sin(uTime * 0.3 + vLayer * 6.28) * 0.15;
                     colorMix = clamp(colorMix, 0.0, 1.0);
 
                     vec3 color;
@@ -384,13 +412,20 @@ class NeonOrb {
                         color = mix(uColor2, uColor3, (colorMix - 0.5) * 2.0);
                     }
 
-                    // Add white hot core for particles near center
-                    float whiteness = (1.0 - vDist) * 0.4 + coreGlow * 0.3;
-                    color = mix(color, vec3(1.0), whiteness);
-
-                    // Enhanced brightness in center of each particle
-                    color += vec3(1.0) * innerGlow * 0.2;
-                    color += color * coreGlow * 0.5;
+                    if (vIsStar > 0.5) {
+                        // Stars are white/blue-white with subtle color tint
+                        vec3 starColor = vec3(0.95, 0.97, 1.0);
+                        color = mix(starColor, color, 0.2);
+                        // Bright white core
+                        color = mix(color, vec3(1.0), coreGlow * 0.9);
+                        color += vec3(1.0) * innerGlow * 0.5;
+                    } else {
+                        // Nebula: softer, more colorful
+                        // Subtle brightness toward center
+                        float centerBright = (1.0 - vDist) * 0.2;
+                        color = mix(color, color * 1.3, centerBright);
+                        color += color * innerGlow * 0.15;
+                    }
 
                     float alpha = glow * vAlpha;
                     gl_FragColor = vec4(color, alpha);
@@ -399,9 +434,10 @@ class NeonOrb {
             uniforms: {
                 uTime: { value: 0 },
                 uAudioLevel: { value: 0 },
-                uColor1: { value: new THREE.Color(0x00ffff) },
-                uColor2: { value: new THREE.Color(0x8b5cf6) },
-                uColor3: { value: new THREE.Color(0xec4899) }
+                // Cosmic nebula palette: deep blue -> purple -> magenta
+                uColor1: { value: new THREE.Color(0x4a90d9) }, // Stellar blue
+                uColor2: { value: new THREE.Color(0x9b59b6) }, // Nebula purple
+                uColor3: { value: new THREE.Color(0xe74c8c) }  // Cosmic magenta
             },
             transparent: true,
             blending: THREE.AdditiveBlending,
@@ -540,7 +576,7 @@ class NeonOrb {
             uniforms: {
                 uTime: { value: 0 },
                 uAudioLevel: { value: 0 },
-                uColor1: { value: new THREE.Color(0x00ffff) }
+                uColor1: { value: new THREE.Color(0x6a9fd9) } // Stellar blue-white
             },
             transparent: true,
             blending: THREE.AdditiveBlending,
@@ -550,7 +586,7 @@ class NeonOrb {
         this.detailCloud = new THREE.Points(detailGeometry, this.detailCloudMaterial);
         this.scene.add(this.detailCloud);
 
-        // === CENTRAL BRIGHT CORE - Multi-layered for intensity ===
+        // === CENTRAL STAR CORE - Bright stellar center ===
         const coreGeometry = new THREE.BufferGeometry();
         coreGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0]), 3));
 
@@ -560,24 +596,23 @@ class NeonOrb {
                 uniform float uAudioLevel;
                 varying float vIntensity;
 
-                // Smooth easing function for curved oscillation
+                // Smooth easing for star pulsation
                 float smoothPulse(float t) {
                     float s = sin(t);
-                    // Cubic easing for smoother curves at peaks
                     return s * s * s * sign(s) * 0.5 + s * 0.5;
                 }
 
                 void main() {
-                    // SLOW, smooth pulsing - single gentle wave
-                    float slowTime = uTime * 0.4;
-                    float basePulse = smoothPulse(slowTime) * 0.08;
-                    float audioPulse = uAudioLevel * 0.25;
-                    vIntensity = 0.9 + basePulse + audioPulse;
+                    // Very slow, gentle stellar pulse
+                    float slowTime = uTime * 0.25;
+                    float basePulse = smoothPulse(slowTime) * 0.06;
+                    float audioPulse = uAudioLevel * 0.2;
+                    vIntensity = 0.95 + basePulse + audioPulse;
 
-                    // Core size - ONE slow smooth wave, not multiple interfering
-                    float sizeWave = smoothPulse(uTime * 0.5) * 8.0;
-                    float baseSize = 95.0 + sizeWave;
-                    float audioSize = uAudioLevel * 35.0;
+                    // Star core size - subtle breathing
+                    float sizeWave = smoothPulse(uTime * 0.35) * 6.0;
+                    float baseSize = 85.0 + sizeWave;
+                    float audioSize = uAudioLevel * 30.0;
 
                     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
                     gl_PointSize = (baseSize + audioSize) / -mvPosition.z;
@@ -594,20 +629,21 @@ class NeonOrb {
                     float dist = length(gl_PointCoord - vec2(0.5));
                     if (dist > 0.5) discard;
 
-                    // Multiple glow layers for intense core
+                    // Multiple glow layers for realistic star core
                     float glow1 = smoothstep(0.5, 0.0, dist);
                     float glow2 = smoothstep(0.35, 0.0, dist);
-                    float glow3 = smoothstep(0.2, 0.0, dist);
-                    float glow4 = smoothstep(0.08, 0.0, dist);
+                    float glow3 = smoothstep(0.18, 0.0, dist);
+                    float glow4 = smoothstep(0.06, 0.0, dist);
 
-                    // SLOW color transition - 8 second cycle
-                    float colorMix = sin(uTime * 0.25) * 0.5 + 0.5;
+                    // Slow color shift between warm and cool star colors
+                    float colorMix = sin(uTime * 0.15) * 0.5 + 0.5;
                     vec3 baseColor = mix(uColor1, uColor2, colorMix);
 
-                    vec3 color = baseColor * glow1 * 0.4;
-                    color += mix(baseColor, vec3(1.0), 0.5) * glow2 * 0.3;
-                    color += vec3(1.0) * glow3 * 0.4;
-                    color += vec3(1.0) * glow4 * 0.6;
+                    // Star layers: colored outer glow -> white core
+                    vec3 color = baseColor * glow1 * 0.35;
+                    color += mix(baseColor, vec3(1.0, 0.98, 0.95), 0.6) * glow2 * 0.35;
+                    color += vec3(1.0, 0.99, 0.97) * glow3 * 0.5;
+                    color += vec3(1.0) * glow4 * 0.7; // Brilliant white center
 
                     float alpha = glow1 * vIntensity;
                     gl_FragColor = vec4(color, alpha);
@@ -616,8 +652,9 @@ class NeonOrb {
             uniforms: {
                 uTime: { value: 0 },
                 uAudioLevel: { value: 0 },
-                uColor1: { value: new THREE.Color(0x00ffff) },
-                uColor2: { value: new THREE.Color(0xec4899) }
+                // Stellar colors: blue-white to warm white
+                uColor1: { value: new THREE.Color(0x7ab8e6) }, // Cool stellar blue
+                uColor2: { value: new THREE.Color(0xffeedd) }  // Warm stellar white
             },
             transparent: true,
             blending: THREE.AdditiveBlending,
@@ -626,6 +663,85 @@ class NeonOrb {
 
         this.corePoint = new THREE.Points(coreGeometry, this.coreMaterial);
         this.scene.add(this.corePoint);
+
+        // === DISTANT BACKGROUND STARS ===
+        // Tiny twinkling stars in the far background for depth
+        const bgStarCount = 150;
+        const bgPositions = new Float32Array(bgStarCount * 3);
+        const bgSizes = new Float32Array(bgStarCount);
+        const bgPhases = new Float32Array(bgStarCount);
+
+        for (let i = 0; i < bgStarCount; i++) {
+            // Distribute in a larger sphere behind the nebula
+            const r = 1.0 + Math.random() * 0.8;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+
+            bgPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+            bgPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+            bgPositions[i * 3 + 2] = r * Math.cos(phi);
+
+            // Very small distant stars
+            bgSizes[i] = Math.random() * 0.012 + 0.004;
+            bgPhases[i] = Math.random() * Math.PI * 2;
+        }
+
+        const bgStarGeometry = new THREE.BufferGeometry();
+        bgStarGeometry.setAttribute('position', new THREE.BufferAttribute(bgPositions, 3));
+        bgStarGeometry.setAttribute('size', new THREE.BufferAttribute(bgSizes, 1));
+        bgStarGeometry.setAttribute('phase', new THREE.BufferAttribute(bgPhases, 1));
+
+        this.bgStarMaterial = new THREE.ShaderMaterial({
+            vertexShader: `
+                attribute float size;
+                attribute float phase;
+                varying float vAlpha;
+                uniform float uTime;
+
+                void main() {
+                    vec3 pos = position;
+                    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+
+                    // Twinkle effect
+                    float twinkle = sin(uTime * 2.0 + phase * 10.0) *
+                                   sin(uTime * 3.1 + phase * 7.0) *
+                                   sin(uTime * 1.7 + phase * 13.0);
+                    twinkle = twinkle * 0.5 + 0.5;
+
+                    gl_PointSize = size * (200.0 / -mvPosition.z) * (0.5 + twinkle * 0.5);
+                    vAlpha = 0.3 + twinkle * 0.7;
+
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                varying float vAlpha;
+
+                void main() {
+                    float dist = length(gl_PointCoord - vec2(0.5));
+                    if (dist > 0.5) discard;
+
+                    // Sharp star point
+                    float glow = smoothstep(0.5, 0.0, dist);
+                    float core = smoothstep(0.15, 0.0, dist);
+
+                    vec3 color = vec3(0.9, 0.95, 1.0); // Blue-white starlight
+                    color += vec3(1.0) * core * 0.5;
+
+                    float alpha = glow * vAlpha;
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `,
+            uniforms: {
+                uTime: { value: 0 }
+            },
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        this.bgStars = new THREE.Points(bgStarGeometry, this.bgStarMaterial);
+        this.scene.add(this.bgStars);
     }
 
     createParticles() {
@@ -636,10 +752,10 @@ class NeonOrb {
         const speeds = new Float32Array(particleCount);
 
         const colorPalette = [
-            new THREE.Color(0x00ffff), // Cyan
-            new THREE.Color(0x8b5cf6), // Purple
-            new THREE.Color(0xec4899), // Pink
-            new THREE.Color(0xffffff)  // White
+            new THREE.Color(0x5a9fd9), // Stellar blue
+            new THREE.Color(0x9b6fd9), // Nebula purple
+            new THREE.Color(0xd97aaa), // Cosmic pink
+            new THREE.Color(0xe8e8ff)  // Star white
         ];
 
         for (let i = 0; i < particleCount; i++) {
@@ -744,8 +860,8 @@ class NeonOrb {
             `,
             uniforms: {
                 uTime: { value: 0 },
-                uColor1: { value: new THREE.Color(0x00ffff) },
-                uColor2: { value: new THREE.Color(0xec4899) }
+                uColor1: { value: new THREE.Color(0x5a9fd9) }, // Stellar blue
+                uColor2: { value: new THREE.Color(0xc97dd9) }  // Nebula pink
             },
             transparent: true,
             side: THREE.DoubleSide,
@@ -759,27 +875,31 @@ class NeonOrb {
     setState(state) {
         this.state = state;
 
-        // Update colors based on state for ALL particle systems
+        // Update colors based on state - cosmic/stellar themed palettes
         const colors = {
             idle: {
-                c1: new THREE.Color(0x00ffff),
-                c2: new THREE.Color(0x8b5cf6),
-                c3: new THREE.Color(0xec4899)
+                // Deep space: stellar blue -> nebula purple -> cosmic magenta
+                c1: new THREE.Color(0x4a90d9),
+                c2: new THREE.Color(0x9b59b6),
+                c3: new THREE.Color(0xe74c8c)
             },
             listening: {
-                c1: new THREE.Color(0x00ffff),
-                c2: new THREE.Color(0x00ccff),
-                c3: new THREE.Color(0x0088ff)
+                // Active blue nebula - brighter, more energetic
+                c1: new THREE.Color(0x5cc9f5),
+                c2: new THREE.Color(0x3d9cd9),
+                c3: new THREE.Color(0x2d7ab8)
             },
             speaking: {
-                c1: new THREE.Color(0xec4899),
-                c2: new THREE.Color(0xff6b9d),
-                c3: new THREE.Color(0xff8fab)
+                // Warm stellar emission - golden/coral nebula
+                c1: new THREE.Color(0xf5a962),
+                c2: new THREE.Color(0xe87c6d),
+                c3: new THREE.Color(0xd95a8c)
             },
             thinking: {
-                c1: new THREE.Color(0x8b5cf6),
-                c2: new THREE.Color(0xa78bfa),
-                c3: new THREE.Color(0xc4b5fd)
+                // Deep purple/violet nebula - contemplative
+                c1: new THREE.Color(0x8e6fd9),
+                c2: new THREE.Color(0xab7bc9),
+                c3: new THREE.Color(0xc98dd9)
             }
         };
 
@@ -937,6 +1057,14 @@ class NeonOrb {
             // Aura syncs with global breathing
             const auraScale = 1.0 + baseBreath * 0.5 + smoothedAudio * 0.1;
             this.aura.scale.setScalar(auraScale);
+        }
+
+        // ===== UPDATE BACKGROUND STARS =====
+        if (this.bgStars && this.bgStarMaterial) {
+            this.bgStarMaterial.uniforms.uTime.value = time;
+            // Very slow rotation for subtle depth effect
+            this.bgStars.rotation.y = time * 0.02;
+            this.bgStars.rotation.x = time * 0.01;
         }
 
         this.renderer.render(this.scene, this.camera);

@@ -30,9 +30,32 @@ const state = {
     selectedVoice: 'af_heart',
     selectedModel: 'llama3.2:latest',
     speechSpeed: 1.0,
+    volume: 1.0,
     notifications: [],
     unreadCount: 0,
-    notificationPollInterval: null
+    notificationPollInterval: null,
+    pendingAudio: null,  // Audio waiting for user gesture to play (mobile)
+    // Terminal panel state
+    terminalOpen: false,
+    // Multi-session support
+    sessions: {
+        active: null,       // Currently viewed session ID
+        list: {}            // Map of session objects
+    }
+    // Session object structure (stored in sessions.list):
+    // {
+    //     id: 'session-123',
+    //     status: 'connecting' | 'running' | 'complete' | 'error' | 'approval',
+    //     title: 'Task description...',
+    //     output: [],             // Array of {type, content} lines
+    //     eventSource: null,      // SSE connection
+    //     claudeSessionId: null,  // For resume
+    //     lineCount: 0,
+    //     pendingApproval: false,
+    //     approvalMessage: null,
+    //     startTime: Date.now(),
+    //     lastSummaryTime: 0
+    // }
 };
 
 // DOM Elements
@@ -44,9 +67,12 @@ let waveformAudioContext = null;
 let waveformAnalyser = null;
 let waveformAudioStream = null;
 
-// Mobile audio context (needs to be created on user gesture)
-let mobileAudioContext = null;
+// Mobile audio unlock tracking
 let mobileAudioUnlocked = false;
+
+// Track audio elements that already have MediaElementSource attached
+// (createMediaElementSource can only be called once per element)
+const audioElementSources = new WeakMap();
 
 // Multiple curves with different attenuation (Siri-style)
 const curves = [
@@ -73,6 +99,8 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.modelSelect = document.getElementById('modelSelect');
     elements.speedRange = document.getElementById('speedRange');
     elements.speedValue = document.getElementById('speedValue');
+    elements.volumeRange = document.getElementById('volumeRange');
+    elements.volumeValue = document.getElementById('volumeValue');
     elements.ollamaStatus = document.getElementById('ollamaStatus');
     elements.kokoroStatus = document.getElementById('kokoroStatus');
     elements.muteBtn = document.getElementById('muteBtn');
@@ -98,11 +126,33 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.closeNotifications = document.getElementById('closeNotifications');
     elements.markAllReadBtn = document.getElementById('markAllReadBtn');
 
+    // Terminal elements
+    elements.terminalOverlay = document.getElementById('terminalOverlay');
+    elements.terminalWindow = document.getElementById('terminalWindow');
+    elements.terminalContent = document.getElementById('terminalContent');
+    elements.terminalApproval = document.getElementById('terminalApproval');
+    elements.approvalMessage = document.getElementById('approvalMessage');
+    elements.approveBtn = document.getElementById('approveBtn');
+    elements.denyBtn = document.getElementById('denyBtn');
+    elements.terminalStatus = document.getElementById('terminalStatus');
+    elements.statusIndicator = document.getElementById('statusIndicator');
+    elements.statusText = document.getElementById('statusText');
+    elements.statusStats = document.getElementById('statusStats');
+    elements.terminalClear = document.getElementById('terminalClear');
+    elements.terminalCollapse = document.getElementById('terminalCollapse');
+    elements.sessionTabs = document.getElementById('sessionTabs');
+    elements.terminalToggleBtn = document.getElementById('terminalToggleBtn');
+    elements.terminalExpandIcon = document.getElementById('terminalExpandIcon');
+    elements.terminalCollapseIcon = document.getElementById('terminalCollapseIcon');
+    elements.terminalBadge = document.getElementById('terminalBadge');
+    elements.interviewOverlay = document.getElementById('interviewOverlay');
+
     // Set up event listeners
     elements.voiceAvatarContainer.addEventListener('click', toggleVoiceMode);
     elements.settingsBtn.addEventListener('click', openSettings);
     elements.closeSettings.addEventListener('click', closeSettings);
     elements.speedRange.addEventListener('input', updateSpeed);
+    elements.volumeRange.addEventListener('input', updateVolume);
     elements.muteBtn.addEventListener('click', toggleMute);
 
     // Login event listeners
@@ -115,6 +165,14 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.notificationBtn.addEventListener('click', toggleNotificationPanel);
     elements.closeNotifications.addEventListener('click', closeNotificationPanel);
     elements.markAllReadBtn.addEventListener('click', markAllNotificationsRead);
+
+    // Terminal event listeners
+    elements.terminalToggleBtn.addEventListener('click', toggleTerminal);
+    elements.terminalCollapse.addEventListener('click', collapseTerminal);
+    elements.terminalClear.addEventListener('click', clearTerminalContent);
+    elements.approveBtn.addEventListener('click', () => handleSessionApproval(true));
+    elements.denyBtn.addEventListener('click', () => handleSessionApproval(false));
+    elements.terminalContent.addEventListener('scroll', handleTerminalScroll);
 
     // Close panels when clicking outside
     document.addEventListener('click', (e) => {
@@ -324,19 +382,47 @@ function startSpeakingWaveform(audioElement) {
         { attenuation: 3, opacity: 0.15, lineWidth: 1.2 }
     ];
 
-    // Create audio context and analyser for the audio element
+    // Create audio context if needed
     if (!waveformAudioContext) {
         waveformAudioContext = new (window.AudioContext || window.webkitAudioContext)();
     }
 
+    // Resume audio context if suspended (critical for mobile)
+    if (waveformAudioContext.state === 'suspended') {
+        waveformAudioContext.resume().catch(e => console.warn('Failed to resume audio context:', e));
+    }
+
+    // Create analyser
     waveformAnalyser = waveformAudioContext.createAnalyser();
-    const source = waveformAudioContext.createMediaElementSource(audioElement);
-    source.connect(waveformAnalyser);
-    waveformAnalyser.connect(waveformAudioContext.destination);
     waveformAnalyser.fftSize = 256;
     waveformAnalyser.smoothingTimeConstant = 0.7;
     const bufferLength = waveformAnalyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
+
+    // Check if this audio element already has a MediaElementSource
+    // (createMediaElementSource can only be called ONCE per element)
+    let source = audioElementSources.get(audioElement);
+    if (!source) {
+        try {
+            source = waveformAudioContext.createMediaElementSource(audioElement);
+            audioElementSources.set(audioElement, source);
+        } catch (e) {
+            // If it fails, the audio will still play but without visualization
+            console.warn('Could not create MediaElementSource:', e);
+            // Still run the animation with simulated amplitude
+            startFallbackSpeakingAnimation(canvas, ctx, centerX, centerY, maxWaveHeight, speakingCurves);
+            return;
+        }
+    }
+
+    // Connect: source -> analyser -> destination
+    try {
+        source.disconnect(); // Disconnect from previous connections
+    } catch (e) {
+        // May not be connected, that's fine
+    }
+    source.connect(waveformAnalyser);
+    waveformAnalyser.connect(waveformAudioContext.destination);
 
     function draw() {
         if (!state.isActive) return;
@@ -399,15 +485,61 @@ function startSpeakingWaveform(audioElement) {
     draw();
 }
 
+// Fallback animation when MediaElementSource fails (e.g., on mobile with CORS issues)
+function startFallbackSpeakingAnimation(canvas, ctx, centerX, centerY, maxWaveHeight, speakingCurves) {
+    let phase = 0;
+    let smoothedAmplitude = 0.5; // Simulated amplitude
+
+    function draw() {
+        if (!state.isActive || !state.isSpeaking) return;
+        waveformAnimationId = requestAnimationFrame(draw);
+
+        // Simulate varying amplitude
+        smoothedAmplitude = 0.4 + Math.sin(Date.now() / 300) * 0.2;
+
+        if (window.neonOrb) {
+            window.neonOrb.setAudioLevel(smoothedAmplitude);
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        let baseColor = { r: 255, g: 179, b: 71 }; // Orange for speaking
+        const waveFrequency = 2.5;
+        const amplitude = 5 + smoothedAmplitude * maxWaveHeight * 1.2;
+
+        speakingCurves.forEach(curve => {
+            ctx.beginPath();
+            ctx.lineWidth = curve.lineWidth;
+            ctx.strokeStyle = `rgba(${baseColor.r}, ${baseColor.g}, ${baseColor.b}, ${curve.opacity})`;
+            ctx.lineCap = 'round';
+
+            const waveWidth = canvas.width;
+            for (let x = 0; x <= waveWidth; x++) {
+                const normalizedX = x / waveWidth;
+                const angle = normalizedX * Math.PI * 2 * waveFrequency + phase + (curve.attenuation * 0.15);
+                const distanceFromCenter = Math.abs(x - centerX) / (waveWidth / 2);
+                const amplitudeEnvelope = (1 - Math.pow(distanceFromCenter, 1.5)) * 1.8;
+                const y = centerY + Math.sin(angle) * amplitude * (1 + curve.attenuation * 0.15) * amplitudeEnvelope;
+
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        });
+
+        phase += 0.08;
+    }
+
+    draw();
+}
+
 function stopWaveformVisualization() {
     if (waveformAnimationId) {
         cancelAnimationFrame(waveformAnimationId);
         waveformAnimationId = null;
     }
-    if (waveformAudioContext) {
-        waveformAudioContext.close();
-        waveformAudioContext = null;
-    }
+    // Don't close AudioContext - we want to reuse it for future audio
+    // Closing it prevents mobile audio from working on subsequent plays
     if (waveformAudioStream) {
         waveformAudioStream.getTracks().forEach(track => track.stop());
         waveformAudioStream = null;
@@ -448,6 +580,15 @@ function releaseMicrophoneStream() {
 async function toggleVoiceMode() {
     // Unlock mobile audio on first interaction
     await unlockMobileAudio();
+
+    // Play any pending audio that was blocked
+    await playPendingAudio();
+
+    // If AI is speaking, interrupt it (tap-to-interrupt feature)
+    if (state.isSpeaking) {
+        interruptBotResponse();
+        return;
+    }
 
     if (state.isActive) {
         stopVoiceMode();
@@ -622,6 +763,20 @@ function startListening() {
             }
         }
 
+        // Voice command interrupt detection - specific commands to stop AI
+        const INTERRUPT_COMMANDS = ['stop', 'cancel', 'wait', 'pause', 'quiet', 'shut up', 'be quiet'];
+
+        if (state.isSpeaking) {
+            const transcript = (interim + final).toLowerCase();
+            if (INTERRUPT_COMMANDS.some(cmd => transcript.includes(cmd))) {
+                interruptBotResponse();
+                // Clear transcripts to avoid processing the interrupt command
+                state.finalTranscript = '';
+                state.currentTranscript = '';
+                return;
+            }
+        }
+
         // Barge-in detection - interrupt AI if user starts speaking
         if ((interim || final) && state.isSpeaking && state.aiAudio) {
             fadeOutAudio();
@@ -637,6 +792,17 @@ function startListening() {
             state.finalTranscript += final;
             state.currentTranscript = '';
             showCurrentText(state.finalTranscript, false);
+
+            // Check for voice approval commands if there's a pending approval
+            if (hasAnyPendingApproval()) {
+                const lowerFinal = final.toLowerCase().trim();
+                if (checkVoiceApproval(lowerFinal)) {
+                    // Voice approval handled - clear transcript and skip normal processing
+                    state.finalTranscript = '';
+                    return;
+                }
+            }
+
             startSilenceTimer();
         }
     };
@@ -722,18 +888,33 @@ async function processTranscript() {
         // Check if the response is a function call
         const functionCall = detectFunctionCall(assistantMessage);
         if (functionCall) {
-            // Execute the function call and get a human-readable response
-            const functionResponse = await executeFunctionCall(functionCall);
+            // Determine execution mode: 'stream' shows terminal, 'quick' runs in background
+            const isStreamMode = functionCall.mode === 'stream';
 
-            // Update conversation with function execution info
+            // Get the spoken message (what the agent says before executing)
+            const spokenMessage = functionCall.spokenMessage ||
+                (isStreamMode
+                    ? "Let me show you what I'm doing. Watch the terminal."
+                    : "I'm working on that task for you. You'll get a notification when it's done.");
+
+            // Update conversation with the spoken message
             state.conversationHistory.push(
                 { role: 'user', content: userMessage },
-                { role: 'assistant', content: `[Function: ${functionCall.function}] ${functionResponse}` }
+                { role: 'assistant', content: spokenMessage }
             );
 
-            // Speak the function response
-            showCurrentText(functionResponse, false);
-            await speakResponse(functionResponse);
+            // Speak the message first
+            showCurrentText(spokenMessage, false);
+
+            if (isStreamMode) {
+                // Stream mode - open terminal and stream output
+                await speakResponse(spokenMessage);
+                executeFunctionCallWithStreaming(functionCall);
+            } else {
+                // Quick mode - execute in background (fire and forget)
+                executeFunctionCallInBackground(functionCall);
+                await speakResponse(spokenMessage);
+            }
             return;
         }
 
@@ -834,6 +1015,11 @@ function playAudio(base64Data) {
             // Ensure audio context is unlocked on mobile
             await unlockMobileAudio();
 
+            // Resume audio context if suspended (critical for mobile)
+            if (waveformAudioContext && waveformAudioContext.state === 'suspended') {
+                await waveformAudioContext.resume();
+            }
+
             // Convert base64 to blob for better mobile compatibility
             const byteCharacters = atob(base64Data);
             const byteNumbers = new Array(byteCharacters.length);
@@ -841,15 +1027,37 @@ function playAudio(base64Data) {
                 byteNumbers[i] = byteCharacters.charCodeAt(i);
             }
             const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: 'audio/mp3' });
+
+            // Detect audio format from header bytes
+            let mimeType = 'audio/mpeg'; // Default to MP3
+            if (byteArray.length > 4) {
+                // Check for WAV header (RIFF)
+                if (byteArray[0] === 0x52 && byteArray[1] === 0x49 && byteArray[2] === 0x46 && byteArray[3] === 0x46) {
+                    mimeType = 'audio/wav';
+                }
+                // Check for OGG header (OggS)
+                else if (byteArray[0] === 0x4F && byteArray[1] === 0x67 && byteArray[2] === 0x67 && byteArray[3] === 0x53) {
+                    mimeType = 'audio/ogg';
+                }
+                // Check for FLAC header (fLaC)
+                else if (byteArray[0] === 0x66 && byteArray[1] === 0x4C && byteArray[2] === 0x61 && byteArray[3] === 0x43) {
+                    mimeType = 'audio/flac';
+                }
+            }
+
+            const blob = new Blob([byteArray], { type: mimeType });
             const audioUrl = URL.createObjectURL(blob);
 
-            const audio = new Audio(audioUrl);
+            const audio = new Audio();
             state.aiAudio = audio;
-            audio.volume = 1.0;
 
-            // Mobile-specific: load before playing
+            // Set attributes before setting src (important for mobile)
             audio.preload = 'auto';
+            audio.volume = state.volume;
+
+            // iOS Safari needs these attributes
+            audio.setAttribute('playsinline', 'true');
+            audio.setAttribute('webkit-playsinline', 'true');
 
             audio.onplay = () => {
                 startSpeakingWaveform(audio);
@@ -857,29 +1065,46 @@ function playAudio(base64Data) {
 
             audio.onended = () => {
                 state.aiAudio = null;
+                state.isSpeaking = false;
                 URL.revokeObjectURL(audioUrl);
                 resolve();
             };
 
             audio.onerror = (e) => {
-                console.error('Audio playback error:', e);
+                console.error('Audio playback error:', e, audio.error);
                 state.aiAudio = null;
+                state.isSpeaking = false;
                 URL.revokeObjectURL(audioUrl);
                 resolve();
             };
 
-            // Load and play with mobile-friendly approach
-            audio.load();
-            const playPromise = audio.play();
-            if (playPromise !== undefined) {
-                playPromise.catch((error) => {
+            // Set source after event handlers
+            audio.src = audioUrl;
+
+            // Use canplaythrough event for more reliable mobile playback
+            audio.oncanplaythrough = async () => {
+                try {
+                    await audio.play();
+                } catch (error) {
                     console.error('Audio play failed:', error);
+                    // On mobile, if autoplay fails, try playing on next user interaction
+                    if (error.name === 'NotAllowedError') {
+                        console.warn('Autoplay blocked - audio requires user interaction');
+                        // Store for later playback on user gesture
+                        state.pendingAudio = audio;
+                    }
+                    state.isSpeaking = false;
                     URL.revokeObjectURL(audioUrl);
                     resolve();
-                });
-            }
+                }
+            };
+
+            // Start loading
+            audio.load();
+
         } catch (error) {
             console.error('Audio playback error:', error);
+            state.isSpeaking = false;
             resolve();
         }
     });
@@ -890,27 +1115,52 @@ async function unlockMobileAudio() {
     if (mobileAudioUnlocked) return;
 
     try {
-        // Create audio context if needed
-        if (!mobileAudioContext) {
-            mobileAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        // Create or get the shared audio context
+        if (!waveformAudioContext) {
+            waveformAudioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
 
         // Resume if suspended (common on mobile)
-        if (mobileAudioContext.state === 'suspended') {
-            await mobileAudioContext.resume();
+        if (waveformAudioContext.state === 'suspended') {
+            await waveformAudioContext.resume();
         }
 
-        // Play silent audio to unlock
-        const silentBuffer = mobileAudioContext.createBuffer(1, 1, 22050);
-        const source = mobileAudioContext.createBufferSource();
+        // Play silent audio to unlock HTMLAudioElement playback on iOS
+        const silentBuffer = waveformAudioContext.createBuffer(1, 1, 22050);
+        const source = waveformAudioContext.createBufferSource();
         source.buffer = silentBuffer;
-        source.connect(mobileAudioContext.destination);
+        source.connect(waveformAudioContext.destination);
         source.start(0);
+
+        // Also create and play a silent HTML audio element to unlock that path
+        try {
+            const silentAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+            silentAudio.volume = 0.01;
+            await silentAudio.play();
+            silentAudio.pause();
+        } catch (e) {
+            // Silent audio play may fail, that's okay
+        }
 
         mobileAudioUnlocked = true;
         console.log('Mobile audio unlocked');
     } catch (e) {
         console.warn('Failed to unlock mobile audio:', e);
+    }
+}
+
+// Play any pending audio that was blocked on mobile
+async function playPendingAudio() {
+    if (state.pendingAudio) {
+        const audio = state.pendingAudio;
+        state.pendingAudio = null;
+        try {
+            await audio.play();
+            state.isSpeaking = true;
+            startSpeakingWaveform(audio);
+        } catch (e) {
+            console.warn('Still cannot play pending audio:', e);
+        }
     }
 }
 
@@ -937,6 +1187,28 @@ function fadeOutAudio() {
     }, 20);
 }
 
+// Trigger haptic feedback on mobile devices
+function triggerHapticFeedback() {
+    if ('vibrate' in navigator) {
+        navigator.vibrate(50);
+    }
+}
+
+// Interrupt the bot's response with visual/haptic feedback
+function interruptBotResponse() {
+    // Trigger haptic feedback
+    triggerHapticFeedback();
+
+    // Show red interrupt glow briefly
+    elements.voiceAvatarContainer.classList.add('interrupting');
+    setTimeout(() => {
+        elements.voiceAvatarContainer.classList.remove('interrupting');
+    }, 500);
+
+    // Fade out the audio and transition to listening
+    fadeOutAudio();
+}
+
 function browserSpeak(text) {
     return new Promise((resolve) => {
         if (!('speechSynthesis' in window)) {
@@ -946,6 +1218,7 @@ function browserSpeak(text) {
 
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = state.speechSpeed;
+        utterance.volume = state.volume;
         utterance.lang = 'en-US';
 
         utterance.onend = () => resolve();
@@ -962,7 +1235,8 @@ function saveSettingsToStorage() {
     const settings = {
         selectedVoice: state.selectedVoice,
         selectedModel: state.selectedModel,
-        speechSpeed: state.speechSpeed
+        speechSpeed: state.speechSpeed,
+        volume: state.volume
     };
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
@@ -979,11 +1253,18 @@ function loadSettingsFromStorage() {
             if (settings.selectedVoice) state.selectedVoice = settings.selectedVoice;
             if (settings.selectedModel) state.selectedModel = settings.selectedModel;
             if (settings.speechSpeed) state.speechSpeed = settings.speechSpeed;
+            if (settings.volume !== undefined) state.volume = settings.volume;
 
             // Update UI for speed
             if (elements.speedRange && elements.speedValue) {
                 elements.speedRange.value = state.speechSpeed;
                 elements.speedValue.textContent = `${state.speechSpeed}x`;
+            }
+
+            // Update UI for volume
+            if (elements.volumeRange && elements.volumeValue) {
+                elements.volumeRange.value = state.volume;
+                elements.volumeValue.textContent = `${Math.round(state.volume * 100)}%`;
             }
         }
     } catch (e) {
@@ -1078,6 +1359,17 @@ function updateSpeed(e) {
     state.speechSpeed = parseFloat(e.target.value);
     elements.speedValue.textContent = `${e.target.value}x`;
     saveSettingsToStorage();
+}
+
+function updateVolume(e) {
+    state.volume = parseFloat(e.target.value);
+    elements.volumeValue.textContent = `${Math.round(state.volume * 100)}%`;
+    saveSettingsToStorage();
+
+    // Update currently playing audio if any
+    if (state.aiAudio) {
+        state.aiAudio.volume = state.volume;
+    }
 }
 
 function openSettings() {
@@ -1467,13 +1759,71 @@ async function fetchNotifications() {
         const res = await fetch('/api/notifications', { credentials: 'include' });
         const data = await res.json();
 
-        state.notifications = data.notifications || [];
+        const newNotifications = data.notifications || [];
+        const previousIds = new Set(state.notifications.map(n => n.id));
+
+        // Find truly new notifications (ones we haven't seen before)
+        const brandNewNotifications = newNotifications.filter(n =>
+            !previousIds.has(n.id) && !n.read
+        );
+
+        state.notifications = newNotifications;
         state.unreadCount = data.unread_count || 0;
         updateNotificationBadge();
         renderNotifications();
+
+        // If we have new notifications and voice mode is active, announce them
+        if (brandNewNotifications.length > 0 && state.isActive && !state.isSpeaking && !state.isProcessing) {
+            for (const notification of brandNewNotifications) {
+                // Only announce completion/error notifications (not "started" ones)
+                if (notification.type === 'success' || notification.type === 'error') {
+                    await announceNotification(notification);
+                }
+            }
+        }
     } catch (error) {
         console.error('Failed to fetch notifications:', error);
     }
+}
+
+// Announce a notification to the user during active conversation
+async function announceNotification(notification) {
+    // Don't interrupt if already speaking or processing
+    if (state.isSpeaking || state.isProcessing) return;
+
+    // Stop listening temporarily
+    const wasListening = state.isListening;
+    if (state.recognition) {
+        try { state.recognition.stop(); } catch (e) {}
+    }
+    state.isListening = false;
+
+    // Create announcement message
+    let announcement = '';
+    if (notification.type === 'success') {
+        announcement = `Task completed: ${notification.title}. ${notification.message.split('\n')[0]}`;
+    } else if (notification.type === 'error') {
+        announcement = `Task failed: ${notification.message.split('\n')[0]}`;
+    } else {
+        announcement = notification.message.split('\n')[0];
+    }
+
+    // Truncate long messages
+    if (announcement.length > 150) {
+        announcement = announcement.substring(0, 147) + '...';
+    }
+
+    // Add to conversation history
+    state.conversationHistory.push({
+        role: 'assistant',
+        content: `[Notification] ${announcement}`
+    });
+
+    // Show and speak the announcement
+    showCurrentText(announcement, false);
+    await speakResponse(announcement);
+
+    // Resume listening if we were before (handled by speakResponse callback)
 }
 
 function updateNotificationBadge() {
@@ -1506,12 +1856,18 @@ function renderNotifications() {
         `;
     }).join('');
 
-    // Add click handlers to mark as read
+    // Add click handlers to mark as read and possibly show terminal
     elements.notificationList.querySelectorAll('.notification-item').forEach(item => {
         item.addEventListener('click', () => {
             const id = item.dataset.id;
             markNotificationRead(id);
             item.classList.remove('unread');
+
+            // Check if this notification has a job_id with stored output
+            const notification = state.notifications.find(n => n.id === id);
+            if (notification && notification.job_id) {
+                showTerminalForJob(notification.job_id, notification.title);
+            }
         });
     });
 }
@@ -1575,6 +1931,25 @@ function detectFunctionCall(response) {
     // Try to parse as JSON to detect function call
     const trimmed = response.trim();
 
+    // First, check if there's a spoken message followed by JSON on a new line
+    // This is the new format: "I'm asking Claude to..." followed by {"function": ...}
+    const jsonLinePattern = /^([\s\S]*?)\n\s*(\{"function"\s*:\s*"claude_execute"[\s\S]*?\})\s*$/;
+    const jsonLineMatch = trimmed.match(jsonLinePattern);
+    if (jsonLineMatch && jsonLineMatch[1] && jsonLineMatch[2]) {
+        try {
+            const parsed = JSON.parse(jsonLineMatch[2]);
+            if (parsed.function === 'claude_execute' && parsed.prompt) {
+                console.log('Function call with message detected:', parsed);
+                return {
+                    ...parsed,
+                    spokenMessage: jsonLineMatch[1].trim()
+                };
+            }
+        } catch (e) {
+            // Continue to other patterns
+        }
+    }
+
     // Try multiple extraction methods
     const jsonPatterns = [
         // Direct JSON object
@@ -1594,6 +1969,11 @@ function detectFunctionCall(response) {
                 const parsed = JSON.parse(match[1]);
                 if (parsed.function === 'claude_execute' && parsed.prompt) {
                     console.log('Function call detected:', parsed);
+                    // Extract any text before the JSON as the spoken message
+                    const beforeJson = trimmed.substring(0, trimmed.indexOf(match[1])).trim();
+                    if (beforeJson) {
+                        parsed.spokenMessage = beforeJson;
+                    }
                     return parsed;
                 }
             } catch (e) {
@@ -1613,6 +1993,27 @@ function detectFunctionCall(response) {
     }
 
     return null;
+}
+
+// Execute function call in background (fire and forget)
+function executeFunctionCallInBackground(functionCall) {
+    // Execute async without blocking the conversation
+    fetch('/api/claude/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            prompt: functionCall.prompt,
+            project: functionCall.project || '/mnt/code'
+        })
+    }).then(res => {
+        if (!res.ok) {
+            console.error('Function call failed:', res.status);
+            // A notification will be created by the server for errors too
+        }
+    }).catch(error => {
+        console.error('Function call execution error:', error);
+    });
 }
 
 async function executeFunctionCall(functionCall) {
@@ -1679,6 +2080,674 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ============ Terminal Streaming Functions ============
+
+/**
+ * Open terminal window and start streaming Claude Code execution
+ */
+// ============ Terminal Toggle Functions ============
+
+/**
+ * Toggle terminal panel open/closed
+ */
+function toggleTerminal() {
+    if (state.terminalOpen) {
+        collapseTerminal();
+    } else {
+        expandTerminal();
+    }
+}
+
+/**
+ * Expand/show terminal panel
+ */
+function expandTerminal() {
+    state.terminalOpen = true;
+    elements.terminalOverlay.classList.add('open');
+    elements.interviewOverlay.classList.add('terminal-active');
+    elements.terminalExpandIcon.style.display = 'none';
+    elements.terminalCollapseIcon.style.display = 'block';
+    renderSessionOutput();
+}
+
+/**
+ * Collapse/hide terminal panel
+ */
+function collapseTerminal() {
+    state.terminalOpen = false;
+    elements.terminalOverlay.classList.remove('open');
+    elements.interviewOverlay.classList.remove('terminal-active');
+    elements.terminalExpandIcon.style.display = 'block';
+    elements.terminalCollapseIcon.style.display = 'none';
+    updateTerminalBadge();
+}
+
+/**
+ * Update the terminal badge showing active session count
+ */
+function updateTerminalBadge() {
+    const activeSessions = Object.values(state.sessions.list).filter(s =>
+        s.status === 'running' || s.status === 'connecting' || s.status === 'approval'
+    ).length;
+
+    if (activeSessions > 0 && !state.terminalOpen) {
+        elements.terminalBadge.textContent = activeSessions;
+        elements.terminalBadge.style.display = 'flex';
+    } else {
+        elements.terminalBadge.style.display = 'none';
+    }
+}
+
+// ============ Session Management Functions ============
+
+/**
+ * Generate unique session ID
+ */
+function generateSessionId() {
+    return 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+}
+
+/**
+ * Create a new Claude session and start streaming
+ */
+function createSession(prompt, project) {
+    const sessionId = generateSessionId();
+
+    // Create session object
+    state.sessions.list[sessionId] = {
+        id: sessionId,
+        status: 'connecting',
+        title: prompt.substring(0, 40) + (prompt.length > 40 ? '...' : ''),
+        output: [],
+        eventSource: null,
+        claudeSessionId: null,
+        lineCount: 0,
+        pendingApproval: false,
+        approvalMessage: null,
+        startTime: Date.now(),
+        lastSummaryTime: Date.now()
+    };
+
+    // Switch to new session and expand terminal
+    state.sessions.active = sessionId;
+    expandTerminal();
+    renderSessionTabs();
+
+    // Start SSE stream
+    startSessionStream(sessionId, prompt, project);
+
+    return sessionId;
+}
+
+/**
+ * Start SSE stream for a session
+ */
+function startSessionStream(sessionId, prompt, project) {
+    const session = state.sessions.list[sessionId];
+    if (!session) return;
+
+    const url = `/api/claude/stream?prompt=${encodeURIComponent(prompt)}&project=${encodeURIComponent(project || '/mnt/code')}`;
+
+    session.eventSource = new EventSource(url);
+
+    session.eventSource.onopen = () => {
+        session.status = 'running';
+        renderSessionTabs();
+        if (state.sessions.active === sessionId) {
+            updateTerminalStatus('running', 'Running');
+        }
+    };
+
+    session.eventSource.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            handleSessionEvent(sessionId, data);
+        } catch (e) {
+            console.error('Failed to parse session event:', e);
+        }
+    };
+
+    session.eventSource.onerror = (error) => {
+        console.error('Session stream error:', error);
+        session.status = 'error';
+        renderSessionTabs();
+
+        if (session.eventSource) {
+            session.eventSource.close();
+            session.eventSource = null;
+        }
+
+        if (state.sessions.active === sessionId) {
+            updateTerminalStatus('error', 'Connection error');
+        }
+    };
+}
+
+/**
+ * Switch to a different session
+ */
+function switchSession(sessionId) {
+    if (!state.sessions.list[sessionId]) return;
+
+    state.sessions.active = sessionId;
+    renderSessionTabs();
+    renderSessionOutput();
+
+    // Update status bar for active session
+    const session = state.sessions.list[sessionId];
+    if (session.status === 'running' || session.status === 'connecting') {
+        updateTerminalStatus('running', session.status === 'connecting' ? 'Connecting...' : 'Running');
+    } else if (session.status === 'complete') {
+        updateTerminalStatus('complete', 'Complete');
+    } else if (session.status === 'error') {
+        updateTerminalStatus('error', 'Error');
+    } else if (session.status === 'approval') {
+        updateTerminalStatus('approval', 'Approval needed');
+    }
+
+    // Show approval panel if needed
+    if (session.pendingApproval) {
+        elements.approvalMessage.textContent = session.approvalMessage || 'Claude needs permission to continue.';
+        elements.terminalApproval.classList.add('visible');
+    } else {
+        elements.terminalApproval.classList.remove('visible');
+    }
+}
+
+/**
+ * Close/remove a session
+ */
+function closeSession(sessionId) {
+    const session = state.sessions.list[sessionId];
+    if (!session) return;
+
+    // Close SSE connection if active
+    if (session.eventSource) {
+        session.eventSource.close();
+    }
+
+    // Remove from list
+    delete state.sessions.list[sessionId];
+
+    // If this was the active session, switch to another
+    if (state.sessions.active === sessionId) {
+        const remaining = Object.keys(state.sessions.list);
+        state.sessions.active = remaining.length > 0 ? remaining[remaining.length - 1] : null;
+    }
+
+    renderSessionTabs();
+    renderSessionOutput();
+    updateTerminalBadge();
+}
+
+// Make closeSession available globally for onclick handlers
+window.closeSession = closeSession;
+
+/**
+ * Render session tabs
+ */
+function renderSessionTabs() {
+    const container = elements.sessionTabs;
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    const sessions = Object.values(state.sessions.list);
+
+    if (sessions.length === 0) {
+        // Show placeholder
+        const placeholder = document.createElement('div');
+        placeholder.className = 'session-tabs-empty';
+        placeholder.textContent = 'No sessions';
+        placeholder.style.cssText = 'color: var(--text-muted); font-size: 0.75rem; padding: 6px 12px;';
+        container.appendChild(placeholder);
+        return;
+    }
+
+    sessions.forEach(session => {
+        const tab = document.createElement('button');
+        tab.className = 'session-tab' + (session.id === state.sessions.active ? ' active' : '');
+        tab.innerHTML = `
+            <span class="status-dot ${session.status}"></span>
+            <span class="session-title">${escapeHtml(session.title)}</span>
+            <button class="close-tab" onclick="event.stopPropagation(); closeSession('${session.id}')">&times;</button>
+        `;
+        tab.onclick = () => switchSession(session.id);
+        container.appendChild(tab);
+    });
+
+    updateTerminalBadge();
+}
+
+/**
+ * Render session output in terminal content area
+ */
+function renderSessionOutput() {
+    const container = elements.terminalContent;
+    if (!container) return;
+
+    const session = state.sessions.list[state.sessions.active];
+
+    if (!session) {
+        container.innerHTML = '<div class="terminal-empty">No active sessions. Ask me to do something!</div>';
+        elements.statusText.textContent = 'Ready';
+        elements.statusStats.textContent = '';
+        elements.terminalApproval.classList.remove('visible');
+        return;
+    }
+
+    // Render output lines
+    container.innerHTML = '';
+    session.output.forEach(line => {
+        const div = document.createElement('div');
+        div.className = `terminal-line ${line.type}`;
+        div.textContent = line.content;
+        container.appendChild(div);
+    });
+
+    // Scroll to bottom
+    container.scrollTop = container.scrollHeight;
+
+    // Update status
+    elements.statusStats.textContent = `${session.lineCount} lines`;
+}
+
+// Legacy function name for compatibility
+function openTerminalWithStream(prompt, project) {
+    createSession(prompt, project);
+}
+
+/**
+ * Handle incoming session stream events
+ */
+function handleSessionEvent(sessionId, event) {
+    const session = state.sessions.list[sessionId];
+    if (!session) return;
+
+    switch (event.type) {
+        case 'session_start':
+            session.claudeSessionId = event.session_id;
+            appendSessionLine(sessionId, 'system', `Session started: ${event.session_id}`);
+            break;
+
+        case 'output':
+            appendSessionLine(sessionId, event.line_type || 'assistant', event.content);
+            break;
+
+        case 'raw':
+            // Raw output line from Claude
+            appendSessionLine(sessionId, 'assistant', event.line);
+            break;
+
+        case 'summary':
+            handleSessionProgressSummary(sessionId, event);
+            break;
+
+        case 'approval_needed':
+            handleSessionApprovalNeeded(sessionId, event);
+            break;
+
+        case 'complete':
+            handleSessionComplete(sessionId, event);
+            break;
+
+        case 'error':
+            appendSessionLine(sessionId, 'error', event.message || 'An error occurred');
+            session.status = 'error';
+            renderSessionTabs();
+            if (state.sessions.active === sessionId) {
+                updateTerminalStatus('error', 'Error');
+            }
+            break;
+
+        default:
+            console.log('Unknown session event:', event);
+    }
+}
+
+/**
+ * Append a line to a session's output buffer
+ */
+function appendSessionLine(sessionId, type, content) {
+    if (!content) return;
+
+    const session = state.sessions.list[sessionId];
+    if (!session) return;
+
+    // Add to session output buffer
+    session.output.push({ type, content });
+    session.lineCount++;
+
+    // Limit buffer size (keep last 500 lines)
+    if (session.output.length > 500) {
+        session.output.shift();
+    }
+
+    // If this is the active session, update the display
+    if (state.sessions.active === sessionId) {
+        const line = document.createElement('div');
+        line.className = `terminal-line ${type}`;
+        line.textContent = content;
+        elements.terminalContent.appendChild(line);
+
+        // Auto-scroll if user is not scrolling
+        if (!session.isUserScrolling) {
+            elements.terminalContent.scrollTop = elements.terminalContent.scrollHeight;
+        }
+
+        // Update stats
+        elements.statusStats.textContent = `${session.lineCount} lines`;
+    }
+}
+
+/**
+ * Handle progress summary from session stream
+ */
+function handleSessionProgressSummary(sessionId, event) {
+    const session = state.sessions.list[sessionId];
+    if (!session) return;
+
+    const summary = event.summary;
+    if (!summary) return;
+
+    // Display conversational summary in terminal
+    const summaryText = summary.conversational || `[Progress] ${summary.event_count} events processed`;
+    appendSessionLine(sessionId, 'summary', summaryText);
+
+    // Add to conversation history for AI awareness (simplified)
+    state.conversationHistory.push({
+        role: 'system',
+        content: `[Claude Code Progress] ${summary.conversational}`
+    });
+
+    // Speak conversational progress if it's been a while and we're active
+    const timeSinceLastSummary = Date.now() - (session.lastSummaryTime || session.startTime);
+    if (timeSinceLastSummary > 45000 && !state.isSpeaking && state.isActive && summary.conversational) {
+        // Speak the conversational update
+        speakResponse(summary.conversational).catch(() => {});
+    }
+
+    session.lastSummaryTime = Date.now();
+}
+
+/**
+ * Handle approval request for a session
+ */
+function handleSessionApprovalNeeded(sessionId, event) {
+    const session = state.sessions.list[sessionId];
+    if (!session) return;
+
+    session.pendingApproval = true;
+    session.approvalMessage = event.message || 'Claude needs permission to continue.';
+    session.status = 'approval';
+
+    // Append to session
+    appendSessionLine(sessionId, 'system', `⚠️ APPROVAL NEEDED: ${session.approvalMessage}`);
+
+    // Update tabs to show approval status
+    renderSessionTabs();
+
+    // If this is the active session, show approval panel
+    if (state.sessions.active === sessionId) {
+        elements.approvalMessage.textContent = session.approvalMessage;
+        elements.terminalApproval.classList.add('visible');
+        updateTerminalStatus('approval', 'Approval needed');
+    }
+
+    // Announce via voice if active
+    if (state.isActive && !state.isSpeaking) {
+        speakResponse(`Approval needed: ${session.approvalMessage}`).catch(() => {});
+    }
+}
+
+/**
+ * Handle user approval/denial via buttons for active session
+ */
+async function handleSessionApproval(approved) {
+    const sessionId = state.sessions.active;
+    if (!sessionId) return;
+
+    const session = state.sessions.list[sessionId];
+    if (!session || !session.pendingApproval) return;
+
+    session.pendingApproval = false;
+    elements.terminalApproval.classList.remove('visible');
+
+    const action = approved ? 'approved' : 'denied';
+    appendSessionLine(sessionId, 'system', `User ${action} the request`);
+
+    try {
+        const res = await fetch('/api/claude/stream/approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                session_id: session.claudeSessionId || sessionId,
+                approved: approved
+            })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+            session.status = 'running';
+            updateTerminalStatus('running', approved ? 'Continuing...' : 'Stopping...');
+            renderSessionTabs();
+
+            // Speak confirmation
+            if (state.isActive) {
+                const msg = approved ? 'Approved. Continuing.' : 'Denied. Stopping task.';
+                speakResponse(msg).catch(() => {});
+            }
+        } else {
+            appendSessionLine(sessionId, 'error', data.error || 'Failed to send approval');
+        }
+    } catch (error) {
+        console.error('Approval error:', error);
+        appendSessionLine(sessionId, 'error', 'Failed to communicate approval');
+    }
+}
+
+/**
+ * Handle session completion
+ */
+function handleSessionComplete(sessionId, event) {
+    const session = state.sessions.list[sessionId];
+    if (!session) return;
+
+    // Close the SSE connection
+    if (session.eventSource) {
+        session.eventSource.close();
+        session.eventSource = null;
+    }
+
+    // Store Claude session ID for potential resume
+    if (event.claude_session_id) {
+        session.claudeSessionId = event.claude_session_id;
+    }
+
+    // Update session status
+    session.status = event.success ? 'complete' : 'error';
+    renderSessionTabs();
+
+    // Final summary line
+    appendSessionLine(sessionId, 'system', `\n--- Task ${event.success ? 'completed' : 'failed'} ---`);
+
+    // Show conversational summary if available
+    const summary = event.summary;
+    if (summary && summary.text) {
+        appendSessionLine(sessionId, 'success', summary.text);
+
+        // Show files modified if any
+        if (summary.files_modified && summary.files_modified.length > 0) {
+            appendSessionLine(sessionId, 'system', `Files: ${summary.files_modified.join(', ')}`);
+        }
+    }
+
+    // Update status bar if this is the active session
+    if (state.sessions.active === sessionId) {
+        const statusText = event.success ? 'Complete' : 'Failed';
+        updateTerminalStatus(session.status, statusText);
+    }
+
+    // Update terminal badge
+    updateTerminalBadge();
+
+    // Announce completion with conversational summary
+    if (state.isActive && !state.isSpeaking) {
+        let msg;
+        if (event.success && summary && summary.text) {
+            // Use the conversational summary (it's already human-friendly)
+            msg = summary.text;
+        } else if (event.success) {
+            msg = 'Task completed successfully.';
+        } else {
+            msg = 'Task finished with some errors. Check the output for details.';
+        }
+        speakResponse(msg).catch(() => {});
+    }
+
+    // Add to conversation history
+    if (summary && summary.text) {
+        state.conversationHistory.push({
+            role: 'assistant',
+            content: `[Task Complete] ${summary.text}`
+        });
+    }
+}
+
+/**
+ * Update terminal status bar
+ */
+function updateTerminalStatus(status, text) {
+    elements.statusIndicator.className = `status-indicator ${status}`;
+    elements.statusText.textContent = text;
+}
+
+/**
+ * Handle terminal scroll to detect user scrolling
+ */
+function handleTerminalScroll() {
+    const sessionId = state.sessions.active;
+    if (!sessionId) return;
+
+    const session = state.sessions.list[sessionId];
+    if (!session) return;
+
+    const content = elements.terminalContent;
+    const isNearBottom = content.scrollHeight - content.scrollTop - content.clientHeight < 50;
+
+    if (!isNearBottom) {
+        session.isUserScrolling = true;
+        clearTimeout(session.scrollTimeout);
+        session.scrollTimeout = setTimeout(() => {
+            session.isUserScrolling = false;
+        }, 3000);
+    } else {
+        session.isUserScrolling = false;
+    }
+}
+
+/**
+ * Clear terminal content for current session
+ */
+function clearTerminalContent() {
+    const sessionId = state.sessions.active;
+    if (sessionId) {
+        const session = state.sessions.list[sessionId];
+        if (session) {
+            session.output = [];
+            session.lineCount = 0;
+        }
+    }
+    elements.terminalContent.innerHTML = '';
+    elements.statusStats.textContent = '0 lines';
+}
+
+/**
+ * Execute function call with streaming (opens terminal)
+ */
+function executeFunctionCallWithStreaming(functionCall) {
+    openTerminalWithStream(functionCall.prompt, functionCall.project);
+}
+
+/**
+ * Check for voice approval commands
+ * Returns true if an approval command was detected and handled
+ */
+function checkVoiceApproval(text) {
+    // Approval keywords
+    const approveKeywords = ['approve', 'approved', 'yes', 'allow', 'continue', 'go ahead', 'do it', 'proceed'];
+    const denyKeywords = ['deny', 'denied', 'no', 'reject', 'stop', 'cancel', 'don\'t', 'abort'];
+
+    // Check for approval
+    for (const keyword of approveKeywords) {
+        if (text.includes(keyword)) {
+            handleSessionApproval(true);
+            return true;
+        }
+    }
+
+    // Check for denial
+    for (const keyword of denyKeywords) {
+        if (text.includes(keyword)) {
+            handleSessionApproval(false);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Check if any session has pending approval
+ */
+function hasAnyPendingApproval() {
+    return Object.values(state.sessions.list).some(s => s.pendingApproval);
+}
+
+/**
+ * Show terminal with stored output for a job
+ * Called when clicking on a code execution notification
+ */
+function showTerminalForJob(jobId, title) {
+    // Check if session already exists
+    let session = state.sessions.list[jobId];
+
+    if (!session) {
+        // Create a replay session from job ID
+        session = {
+            id: jobId,
+            status: 'complete',
+            title: title || `Job ${jobId.slice(0, 8)}`,
+            output: [],
+            eventSource: null,
+            claudeSessionId: jobId,
+            lineCount: 0,
+            pendingApproval: false,
+            approvalMessage: null,
+            startTime: Date.now(),
+            lastSummaryTime: Date.now()
+        };
+
+        // Add a message about history not being available
+        session.output.push({ type: 'system', content: 'Job output is not available for replay.' });
+        session.output.push({ type: 'system', content: 'Output is only preserved during the session that created it.' });
+        session.lineCount = 2;
+
+        state.sessions.list[jobId] = session;
+    }
+
+    // Switch to this session and show terminal
+    state.sessions.active = jobId;
+    expandTerminal();
+    renderSessionTabs();
+    renderSessionOutput();
+
+    // Close notification panel
+    closeNotificationPanel();
 }
 
 // Make deletePasskey available globally for onclick handlers

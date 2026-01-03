@@ -57,13 +57,44 @@
 
     <!-- Interview Mode Overlay - Full Screen -->
     <div class="interview-overlay active" id="interviewOverlay">
-        <!-- Notification Button -->
-        <button class="notification-btn" id="notificationBtn" aria-label="Notifications">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/>
-            </svg>
-            <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
-        </button>
+        <!-- Top Button Bar - Centered -->
+        <div class="top-button-bar">
+            <!-- Settings Button -->
+            <button class="settings-btn" id="settingsBtn" aria-label="Settings">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                </svg>
+            </button>
+
+            <!-- Notification Button -->
+            <button class="notification-btn" id="notificationBtn" aria-label="Notifications">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/>
+                </svg>
+                <span class="notification-badge" id="notificationBadge" style="display: none;">0</span>
+            </button>
+
+            <!-- Mute Button -->
+            <button class="mute-btn" id="muteBtn" aria-label="Mute microphone">
+                <svg id="micOnIcon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
+                </svg>
+                <svg id="micOffIcon" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                    <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V20c0 .55.45 1 1 1s1-.45 1-1v-2.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>
+                </svg>
+            </button>
+
+            <!-- Terminal Toggle Button -->
+            <button class="terminal-toggle-btn" id="terminalToggleBtn" aria-label="Toggle terminal">
+                <svg id="terminalExpandIcon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/>
+                </svg>
+                <svg id="terminalCollapseIcon" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                    <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                </svg>
+                <span class="terminal-badge" id="terminalBadge" style="display: none;">0</span>
+            </button>
+        </div>
 
         <!-- Notification Panel -->
         <div class="notification-panel" id="notificationPanel">
@@ -83,23 +114,6 @@
             </div>
         </div>
 
-        <!-- Settings Button -->
-        <button class="settings-btn" id="settingsBtn" aria-label="Settings">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-            </svg>
-        </button>
-
-        <!-- Mute Button -->
-        <button class="mute-btn" id="muteBtn" aria-label="Mute microphone">
-            <svg id="micOnIcon" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
-            </svg>
-            <svg id="micOffIcon" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
-                <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V20c0 .55.45 1 1 1s1-.45 1-1v-2.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>
-            </svg>
-        </button>
-
         <!-- Settings Panel -->
         <div class="settings-panel" id="settingsPanel">
             <div class="settings-header">
@@ -117,6 +131,10 @@
             <div class="settings-group">
                 <label for="speedRange">Speed: <span id="speedValue">1.0x</span></label>
                 <input type="range" id="speedRange" min="0.5" max="2" step="0.1" value="1">
+            </div>
+            <div class="settings-group">
+                <label for="volumeRange">Volume: <span id="volumeValue">100%</span></label>
+                <input type="range" id="volumeRange" min="0" max="1" step="0.1" value="1">
             </div>
             <div class="settings-group">
                 <label>Passkeys</label>
@@ -162,6 +180,62 @@
             <!-- Transcript Display -->
             <div class="interview-transcript" id="interviewTranscript">
                 <div class="interview-current-text" id="interviewCurrentText">Tap the circle to start speaking</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terminal Overlay - Claude Code Streaming Window -->
+    <div class="terminal-overlay" id="terminalOverlay">
+        <div class="terminal-window" id="terminalWindow">
+            <div class="terminal-header">
+                <div class="session-tabs" id="sessionTabs">
+                    <!-- Session tabs rendered dynamically -->
+                </div>
+                <div class="terminal-controls">
+                    <button class="terminal-btn" id="terminalClear" title="Clear output">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                            <path d="M5 13h14v-2H5v2zm-2 4h14v-2H3v2zM7 7v2h14V7H7z"/>
+                        </svg>
+                    </button>
+                    <button class="terminal-btn terminal-collapse-btn" id="terminalCollapse" title="Collapse terminal">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="terminal-content" id="terminalContent">
+                <div class="terminal-empty">No active sessions. Ask me to do something!</div>
+            </div>
+            <div class="terminal-approval" id="terminalApproval">
+                <div class="approval-icon">
+                    <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                </div>
+                <div class="approval-content">
+                    <div class="approval-title">Approval Required</div>
+                    <div class="approval-message" id="approvalMessage">Claude needs permission to continue.</div>
+                </div>
+                <div class="approval-buttons">
+                    <button class="approval-btn approve" id="approveBtn">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                        </svg>
+                        Approve
+                    </button>
+                    <button class="approval-btn deny" id="denyBtn">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                        Deny
+                    </button>
+                </div>
+            </div>
+            <div class="terminal-status" id="terminalStatus">
+                <span class="status-indicator" id="statusIndicator"></span>
+                <span id="statusText">Ready</span>
+                <span class="status-stats" id="statusStats"></span>
             </div>
         </div>
     </div>
