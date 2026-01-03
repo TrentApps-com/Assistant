@@ -55,11 +55,12 @@ class NeonOrb {
     }
 
     createOrb() {
-        // Core orb shader material
+        // Enhanced core orb shader material with high internal detail
         const orbVertexShader = `
             varying vec2 vUv;
             varying vec3 vNormal;
             varying vec3 vPosition;
+            varying vec3 vWorldPosition;
             uniform float uTime;
             uniform float uAudioLevel;
 
@@ -67,6 +68,7 @@ class NeonOrb {
                 vUv = uv;
                 vNormal = normalize(normalMatrix * normal);
                 vPosition = position;
+                vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
 
                 // Subtle breathing distortion
                 float breathe = sin(uTime * 2.0) * 0.02 + sin(uTime * 3.7) * 0.01;
@@ -85,54 +87,212 @@ class NeonOrb {
             varying vec2 vUv;
             varying vec3 vNormal;
             varying vec3 vPosition;
+            varying vec3 vWorldPosition;
             uniform float uTime;
             uniform float uAudioLevel;
             uniform vec3 uColor1;
             uniform vec3 uColor2;
             uniform vec3 uColor3;
 
-            // Noise functions
-            float random(vec2 st) {
-                return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+            // ===== NOISE FUNCTIONS =====
+            float hash(float n) { return fract(sin(n) * 43758.5453123); }
+            float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+            float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123); }
+
+            // 3D Simplex-like noise
+            float noise3D(vec3 p) {
+                vec3 i = floor(p);
+                vec3 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+
+                float n = i.x + i.y * 157.0 + 113.0 * i.z;
+                return mix(
+                    mix(mix(hash(n + 0.0), hash(n + 1.0), f.x),
+                        mix(hash(n + 157.0), hash(n + 158.0), f.x), f.y),
+                    mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
+                        mix(hash(n + 270.0), hash(n + 271.0), f.x), f.y), f.z);
             }
 
-            float noise(vec2 st) {
-                vec2 i = floor(st);
-                vec2 f = fract(st);
-                float a = random(i);
-                float b = random(i + vec2(1.0, 0.0));
-                float c = random(i + vec2(0.0, 1.0));
-                float d = random(i + vec2(1.0, 1.0));
-                vec2 u = f * f * (3.0 - 2.0 * f);
-                return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+            // Fractal Brownian Motion - multiple octaves for detail
+            float fbm(vec3 p, int octaves) {
+                float value = 0.0;
+                float amplitude = 0.5;
+                float frequency = 1.0;
+                float total = 0.0;
+
+                for (int i = 0; i < 8; i++) {
+                    if (i >= octaves) break;
+                    value += amplitude * noise3D(p * frequency);
+                    total += amplitude;
+                    amplitude *= 0.5;
+                    frequency *= 2.0;
+                }
+                return value / total;
+            }
+
+            // Turbulent noise
+            float turbulence(vec3 p, int octaves) {
+                float value = 0.0;
+                float amplitude = 0.5;
+                float frequency = 1.0;
+
+                for (int i = 0; i < 6; i++) {
+                    if (i >= octaves) break;
+                    value += amplitude * abs(noise3D(p * frequency) * 2.0 - 1.0);
+                    amplitude *= 0.5;
+                    frequency *= 2.0;
+                }
+                return value;
+            }
+
+            // Voronoi/cellular noise for organic patterns
+            vec2 voronoi(vec3 p) {
+                vec3 i = floor(p);
+                vec3 f = fract(p);
+
+                float minDist = 1.0;
+                float secondMin = 1.0;
+
+                for (int x = -1; x <= 1; x++) {
+                    for (int y = -1; y <= 1; y++) {
+                        for (int z = -1; z <= 1; z++) {
+                            vec3 neighbor = vec3(float(x), float(y), float(z));
+                            vec3 point = neighbor + hash3(i + neighbor) - f;
+                            float d = dot(point, point);
+
+                            if (d < minDist) {
+                                secondMin = minDist;
+                                minDist = d;
+                            } else if (d < secondMin) {
+                                secondMin = d;
+                            }
+                        }
+                    }
+                }
+                return vec2(sqrt(minDist), sqrt(secondMin));
+            }
+
+            // Domain warping for fluid-like distortion
+            vec3 domainWarp(vec3 p, float t) {
+                vec3 q = vec3(
+                    fbm(p + vec3(0.0, 0.0, 0.0) + t * 0.1, 4),
+                    fbm(p + vec3(5.2, 1.3, 2.8) + t * 0.15, 4),
+                    fbm(p + vec3(2.1, 3.7, 1.2) + t * 0.12, 4)
+                );
+                return p + q * 0.5;
             }
 
             void main() {
-                // Fresnel effect for edge glow
+                // View and fresnel calculations
                 vec3 viewDirection = normalize(cameraPosition - vPosition);
-                float fresnel = pow(1.0 - dot(viewDirection, vNormal), 3.0);
+                float fresnel = pow(1.0 - max(dot(viewDirection, vNormal), 0.0), 3.0);
+                float rim = pow(1.0 - max(dot(viewDirection, vNormal), 0.0), 2.0);
 
-                // Animated color mixing
-                float t = uTime * 0.5;
-                float n = noise(vUv * 3.0 + t);
+                // Spherical UV for internal mapping
+                vec3 spherePos = normalize(vPosition);
+                float phi = atan(spherePos.z, spherePos.x);
+                float theta = acos(spherePos.y);
+                vec2 sphereUv = vec2(phi / 6.28318 + 0.5, theta / 3.14159);
 
-                // Dynamic color gradient
-                vec3 color = mix(uColor1, uColor2, n);
-                color = mix(color, uColor3, fresnel * 0.5);
+                // Time variables for animation
+                float t = uTime * 0.3;
+                float tFast = uTime * 0.8;
+                float tSlow = uTime * 0.15;
 
-                // Core glow
-                float core = 1.0 - length(vUv - 0.5) * 2.0;
-                core = smoothstep(0.0, 1.0, core);
-                color += vec3(1.0) * core * 0.3;
+                // ===== LAYER 1: Deep Core Energy =====
+                vec3 corePos = vPosition * 3.0 + vec3(0.0, t * 0.5, 0.0);
+                float coreEnergy = fbm(corePos, 6);
+                coreEnergy = pow(coreEnergy, 1.5);
 
-                // Animated swirl patterns
-                float angle = atan(vUv.y - 0.5, vUv.x - 0.5);
-                float swirl = sin(angle * 5.0 + uTime * 2.0 + n * 6.28) * 0.5 + 0.5;
-                color += uColor1 * swirl * 0.2 * (1.0 + uAudioLevel);
+                // ===== LAYER 2: Plasma Flows =====
+                vec3 plasmaPos = domainWarp(vPosition * 2.0, tFast);
+                float plasma = fbm(plasmaPos, 5);
+                plasma = smoothstep(0.3, 0.7, plasma);
 
-                // Edge glow
-                float alpha = 0.85 + fresnel * 0.15;
-                color += (uColor2 + uColor3) * 0.5 * fresnel * (0.5 + uAudioLevel * 0.5);
+                // ===== LAYER 3: Energy Veins/Streams =====
+                vec3 veinPos = vPosition * 4.0 + vec3(sin(t), cos(t * 0.7), sin(t * 1.3)) * 0.3;
+                vec2 veinVoronoi = voronoi(veinPos);
+                float veins = smoothstep(0.0, 0.15, veinVoronoi.y - veinVoronoi.x);
+                veins *= 1.0 - smoothstep(0.0, 0.3, veinVoronoi.x);
+
+                // ===== LAYER 4: Turbulent Nebula =====
+                vec3 nebulaPos = vPosition * 1.5 + vec3(tSlow, tSlow * 0.7, tSlow * 1.2);
+                float nebula = turbulence(nebulaPos, 5);
+
+                // ===== LAYER 5: Fine Detail Noise =====
+                vec3 detailPos = vPosition * 8.0 + vec3(t * 2.0);
+                float detail = noise3D(detailPos) * 0.5 + 0.5;
+                detail = pow(detail, 2.0);
+
+                // ===== LAYER 6: Swirling Vortex =====
+                float angle = atan(vPosition.z, vPosition.x);
+                float radius = length(vPosition.xz);
+                float vortex = sin(angle * 6.0 - radius * 3.0 + t * 2.0 + plasma * 3.0) * 0.5 + 0.5;
+                vortex *= smoothstep(0.8, 0.2, length(vPosition));
+
+                // ===== LAYER 7: Chromatic Energy Rings =====
+                float rings = sin(length(vPosition) * 15.0 - t * 3.0 + coreEnergy * 5.0) * 0.5 + 0.5;
+                rings = pow(rings, 3.0);
+
+                // ===== LAYER 8: Subsurface Scattering Simulation =====
+                float sss = pow(max(dot(viewDirection, -vNormal), 0.0), 2.0);
+                sss += pow(1.0 - abs(dot(viewDirection, vNormal)), 4.0) * 0.5;
+
+                // ===== COLOR COMPOSITION =====
+                vec3 color = vec3(0.0);
+
+                // Deep core - white/cyan hot center
+                float coreIntensity = smoothstep(0.7, 0.0, length(vPosition)) * coreEnergy;
+                vec3 coreColor = mix(uColor1, vec3(1.0), coreIntensity * 0.8);
+                color += coreColor * coreIntensity * 1.5;
+
+                // Plasma layer - primary color flowing
+                vec3 plasmaColor = mix(uColor1, uColor2, plasma);
+                color += plasmaColor * plasma * 0.6;
+
+                // Energy veins - bright accent color
+                vec3 veinColor = mix(uColor2, uColor3, veins);
+                color += veinColor * veins * 0.8 * (1.0 + uAudioLevel);
+
+                // Nebula clouds - subtle color variation
+                vec3 nebulaColor = mix(uColor1 * 0.5, uColor3 * 0.5, nebula);
+                color += nebulaColor * nebula * 0.3;
+
+                // Fine detail highlights
+                color += vec3(1.0) * detail * 0.15;
+
+                // Vortex swirls
+                vec3 vortexColor = mix(uColor2, uColor1, vortex);
+                color += vortexColor * vortex * 0.25;
+
+                // Chromatic rings
+                vec3 ringColor = mix(uColor1, uColor3, rings);
+                color += ringColor * rings * 0.2;
+
+                // Subsurface glow
+                vec3 sssColor = mix(uColor1, vec3(1.0), 0.3);
+                color += sssColor * sss * 0.4;
+
+                // Fresnel edge glow
+                vec3 edgeColor = mix(uColor2, uColor3, fresnel);
+                color += edgeColor * fresnel * 0.8;
+
+                // Audio reactivity - pulse brightness
+                float audioPulse = 1.0 + uAudioLevel * 0.5;
+                color *= audioPulse;
+
+                // Add subtle chromatic aberration at edges
+                float chromatic = rim * 0.3;
+                color.r += chromatic * 0.1;
+                color.b += chromatic * 0.15;
+
+                // HDR bloom simulation
+                float luminance = dot(color, vec3(0.299, 0.587, 0.114));
+                color += color * smoothstep(0.8, 1.5, luminance) * 0.3;
+
+                // Alpha with depth-based transparency
+                float alpha = 0.92 + fresnel * 0.08;
+                alpha *= smoothstep(0.0, 0.3, coreEnergy + plasma * 0.5);
 
                 gl_FragColor = vec4(color, alpha);
             }
@@ -152,11 +312,197 @@ class NeonOrb {
             side: THREE.DoubleSide
         });
 
-        const orbGeometry = new THREE.SphereGeometry(1, 64, 64);
+        const orbGeometry = new THREE.SphereGeometry(1, 128, 128); // Higher resolution
         this.orb = new THREE.Mesh(orbGeometry, this.orbMaterial);
         this.scene.add(this.orb);
 
-        // Inner glow orb
+        // ===== VOLUMETRIC INNER LAYERS =====
+        this.innerLayers = [];
+
+        // Inner Core Layer - Hot white/cyan center
+        const innerCoreShader = {
+            vertexShader: `
+                varying vec3 vPosition;
+                varying vec3 vNormal;
+                uniform float uTime;
+                void main() {
+                    vPosition = position;
+                    vNormal = normalize(normalMatrix * normal);
+                    float pulse = sin(uTime * 3.0) * 0.03;
+                    vec3 pos = position * (1.0 + pulse);
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vPosition;
+                varying vec3 vNormal;
+                uniform float uTime;
+                uniform vec3 uColor;
+
+                float hash(float n) { return fract(sin(n) * 43758.5453); }
+                float noise(vec3 p) {
+                    vec3 i = floor(p);
+                    vec3 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    float n = i.x + i.y * 57.0 + 113.0 * i.z;
+                    return mix(mix(mix(hash(n), hash(n + 1.0), f.x),
+                               mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
+                           mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
+                               mix(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
+                }
+
+                void main() {
+                    float n = noise(vPosition * 5.0 + uTime);
+                    float intensity = 0.8 + n * 0.4;
+                    vec3 color = mix(uColor, vec3(1.0), intensity * 0.5);
+                    float alpha = 0.6 * intensity;
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `
+        };
+
+        const innerCore = new THREE.Mesh(
+            new THREE.SphereGeometry(0.35, 64, 64),
+            new THREE.ShaderMaterial({
+                ...innerCoreShader,
+                uniforms: {
+                    uTime: { value: 0 },
+                    uColor: { value: new THREE.Color(0x00ffff) }
+                },
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            })
+        );
+        this.scene.add(innerCore);
+        this.innerLayers.push(innerCore);
+
+        // Middle Energy Layer
+        const middleLayerShader = {
+            vertexShader: `
+                varying vec3 vPosition;
+                varying vec3 vNormal;
+                uniform float uTime;
+                void main() {
+                    vPosition = position;
+                    vNormal = normalize(normalMatrix * normal);
+                    float wave = sin(position.x * 5.0 + uTime) * sin(position.y * 5.0 + uTime) * 0.02;
+                    vec3 pos = position + normal * wave;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vPosition;
+                varying vec3 vNormal;
+                uniform float uTime;
+                uniform vec3 uColor1;
+                uniform vec3 uColor2;
+
+                float fbm(vec3 p) {
+                    float v = 0.0;
+                    float a = 0.5;
+                    for (int i = 0; i < 5; i++) {
+                        v += a * (sin(p.x + p.y + p.z) * 0.5 + 0.5);
+                        p = p * 2.0 + vec3(1.7, 9.2, 3.1);
+                        a *= 0.5;
+                    }
+                    return v;
+                }
+
+                void main() {
+                    vec3 p = vPosition * 3.0 + vec3(uTime * 0.2);
+                    float n = fbm(p);
+                    vec3 color = mix(uColor1, uColor2, n);
+
+                    // Swirl effect
+                    float angle = atan(vPosition.z, vPosition.x);
+                    float swirl = sin(angle * 4.0 + length(vPosition) * 5.0 - uTime * 2.0) * 0.5 + 0.5;
+                    color += uColor1 * swirl * 0.3;
+
+                    float alpha = 0.4 * n;
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `
+        };
+
+        const middleLayer = new THREE.Mesh(
+            new THREE.SphereGeometry(0.55, 64, 64),
+            new THREE.ShaderMaterial({
+                ...middleLayerShader,
+                uniforms: {
+                    uTime: { value: 0 },
+                    uColor1: { value: new THREE.Color(0x8b5cf6) },
+                    uColor2: { value: new THREE.Color(0x00ffff) }
+                },
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            })
+        );
+        this.scene.add(middleLayer);
+        this.innerLayers.push(middleLayer);
+
+        // Outer Energy Shell
+        const outerShellShader = {
+            vertexShader: `
+                varying vec3 vPosition;
+                varying vec3 vNormal;
+                varying vec2 vUv;
+                uniform float uTime;
+                void main() {
+                    vPosition = position;
+                    vNormal = normalize(normalMatrix * normal);
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                varying vec3 vPosition;
+                varying vec3 vNormal;
+                varying vec2 vUv;
+                uniform float uTime;
+                uniform vec3 uColor;
+
+                void main() {
+                    // Energy streams
+                    float streams = sin(vUv.x * 20.0 + uTime * 3.0) * sin(vUv.y * 20.0 - uTime * 2.0);
+                    streams = smoothstep(0.7, 1.0, abs(streams));
+
+                    // Pulse rings
+                    float rings = sin(length(vPosition) * 30.0 - uTime * 5.0);
+                    rings = smoothstep(0.8, 1.0, abs(rings));
+
+                    float intensity = streams * 0.5 + rings * 0.3;
+                    vec3 color = uColor * intensity;
+
+                    // Edge fade
+                    vec3 viewDir = normalize(cameraPosition - vPosition);
+                    float edge = pow(1.0 - abs(dot(viewDir, vNormal)), 2.0);
+
+                    float alpha = intensity * 0.5 * (1.0 - edge * 0.5);
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `
+        };
+
+        const outerShell = new THREE.Mesh(
+            new THREE.SphereGeometry(0.75, 64, 64),
+            new THREE.ShaderMaterial({
+                ...outerShellShader,
+                uniforms: {
+                    uTime: { value: 0 },
+                    uColor: { value: new THREE.Color(0xec4899) }
+                },
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                side: THREE.DoubleSide
+            })
+        );
+        this.scene.add(outerShell);
+        this.innerLayers.push(outerShell);
+
+        // Outer glow atmosphere
         const glowMaterial = new THREE.ShaderMaterial({
             vertexShader: `
                 varying vec3 vNormal;
@@ -170,20 +516,20 @@ class NeonOrb {
                 uniform vec3 uColor;
                 uniform float uIntensity;
                 void main() {
-                    float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+                    float intensity = pow(0.65 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.5);
                     gl_FragColor = vec4(uColor, intensity * uIntensity);
                 }
             `,
             uniforms: {
                 uColor: { value: new THREE.Color(0x00ffff) },
-                uIntensity: { value: 0.8 }
+                uIntensity: { value: 0.6 }
             },
             transparent: true,
             side: THREE.BackSide,
             blending: THREE.AdditiveBlending
         });
 
-        const glowGeometry = new THREE.SphereGeometry(1.2, 32, 32);
+        const glowGeometry = new THREE.SphereGeometry(1.3, 32, 32);
         this.glow = new THREE.Mesh(glowGeometry, glowMaterial);
         this.scene.add(this.glow);
     }
@@ -368,6 +714,18 @@ class NeonOrb {
         this.particles.material.uniforms.uTime.value = time;
         this.particles.material.uniforms.uAudioLevel.value = this.orbMaterial.uniforms.uAudioLevel.value;
         this.aura.material.uniforms.uTime.value = time;
+
+        // Update inner volumetric layers
+        if (this.innerLayers) {
+            this.innerLayers.forEach((layer, i) => {
+                if (layer.material.uniforms.uTime) {
+                    layer.material.uniforms.uTime.value = time;
+                }
+                // Rotate each layer at different speeds for depth effect
+                layer.rotation.y = time * (0.1 + i * 0.05);
+                layer.rotation.x = Math.sin(time * 0.3 + i) * 0.05;
+            });
+        }
 
         // Rotate orb subtly
         this.orb.rotation.y = time * 0.2;
