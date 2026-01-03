@@ -3,6 +3,54 @@
  * Uses Three.js with custom shaders and particle systems
  */
 
+// Mobile/performance detection
+const ORB_IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const ORB_PREFERS_REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Quality settings based on device
+const ORB_QUALITY = {
+    high: {
+        sphereSegments: 64,
+        glowSegments: 32,
+        innerParticles: 1800,
+        detailParticles: 800,
+        outerParticles: 200,
+        bgStars: 150,
+        targetFPS: 60
+    },
+    medium: {
+        sphereSegments: 32,
+        glowSegments: 16,
+        innerParticles: 600,
+        detailParticles: 200,
+        outerParticles: 80,
+        bgStars: 50,
+        targetFPS: 30
+    },
+    low: {
+        sphereSegments: 16,
+        glowSegments: 8,
+        innerParticles: 200,
+        detailParticles: 50,
+        outerParticles: 30,
+        bgStars: 20,
+        targetFPS: 30
+    },
+    minimal: {
+        sphereSegments: 8,
+        glowSegments: 8,
+        innerParticles: 50,
+        detailParticles: 0,
+        outerParticles: 0,
+        bgStars: 0,
+        targetFPS: 24
+    }
+};
+
+// Select quality based on device
+const ORB_CURRENT_QUALITY = ORB_PREFERS_REDUCED_MOTION ? 'minimal' :
+                            ORB_IS_MOBILE ? 'low' : 'high';
+
 class NeonOrb {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
@@ -12,6 +60,12 @@ class NeonOrb {
         this.height = this.container.offsetHeight || 200;
         this.state = 'idle'; // idle, listening, speaking, thinking
         this.audioLevel = 0;
+        this.quality = ORB_QUALITY[ORB_CURRENT_QUALITY];
+        this.frameInterval = 1000 / this.quality.targetFPS;
+        this.lastFrameTime = 0;
+        this.isPaused = false;
+
+        console.log(`Orb quality: ${ORB_CURRENT_QUALITY}, particles: ${this.quality.innerParticles}`);
 
         this.init();
         this.createOrb();
@@ -21,6 +75,12 @@ class NeonOrb {
 
         // Handle resize
         window.addEventListener('resize', () => this.onResize());
+
+        // Pause when tab is hidden
+        document.addEventListener('visibilitychange', () => {
+            this.isPaused = document.hidden;
+            if (!this.isPaused) this.animate();
+        });
     }
 
     init() {
@@ -122,7 +182,7 @@ class NeonOrb {
             depthWrite: false
         });
 
-        const edgeGeometry = new THREE.SphereGeometry(0.95, 64, 64);
+        const edgeGeometry = new THREE.SphereGeometry(0.95, this.quality.sphereSegments, this.quality.sphereSegments);
         this.edgeRing = new THREE.Mesh(edgeGeometry, edgeRingMaterial);
         this.scene.add(this.edgeRing);
 
@@ -163,7 +223,7 @@ class NeonOrb {
             depthWrite: false
         });
 
-        const glowGeometry = new THREE.SphereGeometry(1.2, 32, 32);
+        const glowGeometry = new THREE.SphereGeometry(1.2, this.quality.glowSegments, this.quality.glowSegments);
         this.glow = new THREE.Mesh(glowGeometry, glowMaterial);
         this.scene.add(this.glow);
     }
@@ -174,7 +234,7 @@ class NeonOrb {
         // Ethereal nebula clouds with twinkling stars
         // Inspired by Hubble telescope imagery
         // ========================================
-        const innerParticleCount = 1800; // Dense nebula field
+        const innerParticleCount = this.quality.innerParticles; // Dense nebula field
         const innerPositions = new Float32Array(innerParticleCount * 3);
         const innerSizes = new Float32Array(innerParticleCount);
         const innerPhases = new Float32Array(innerParticleCount);
@@ -448,7 +508,8 @@ class NeonOrb {
         this.scene.add(this.innerCloud);
 
         // === SECONDARY DETAIL LAYER - Finer particles for 8K effect ===
-        const detailCount = 800;
+        const detailCount = this.quality.detailParticles;
+        if (detailCount === 0) return; // Skip on low-end devices
         const detailPositions = new Float32Array(detailCount * 3);
         const detailSizes = new Float32Array(detailCount);
         const detailPhases = new Float32Array(detailCount);
@@ -666,7 +727,8 @@ class NeonOrb {
 
         // === DISTANT BACKGROUND STARS ===
         // Tiny twinkling stars in the far background for depth
-        const bgStarCount = 150;
+        const bgStarCount = this.quality.bgStars;
+        if (bgStarCount === 0) return; // Skip on low-end devices
         const bgPositions = new Float32Array(bgStarCount * 3);
         const bgSizes = new Float32Array(bgStarCount);
         const bgPhases = new Float32Array(bgStarCount);
@@ -745,7 +807,8 @@ class NeonOrb {
     }
 
     createParticles() {
-        const particleCount = 200;
+        const particleCount = this.quality.outerParticles;
+        if (particleCount === 0) return; // Skip on low-end devices
         const positions = new Float32Array(particleCount * 3);
         const colors = new Float32Array(particleCount * 3);
         const sizes = new Float32Array(particleCount);
@@ -946,8 +1009,17 @@ class NeonOrb {
         this.audioLevel = Math.min(1, Math.max(0, level));
     }
 
-    animate() {
-        requestAnimationFrame(() => this.animate());
+    animate(timestamp) {
+        if (this.isPaused) return;
+
+        requestAnimationFrame((t) => this.animate(t));
+
+        // FPS throttling for mobile
+        if (timestamp && this.lastFrameTime) {
+            const elapsed = timestamp - this.lastFrameTime;
+            if (elapsed < this.frameInterval) return;
+        }
+        this.lastFrameTime = timestamp || performance.now();
 
         const time = this.clock.getElapsedTime();
 

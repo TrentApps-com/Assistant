@@ -11,6 +11,15 @@ const VOICE_CONFIG = {
     MIN_SPEECH_LENGTH: 500          // Minimum speech to process
 };
 
+// Mobile/iOS detection
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Audio pool for iOS - pre-unlocked audio elements
+const audioPool = [];
+let audioPoolInitialized = false;
+
 // State
 const state = {
     isActive: false,
@@ -584,6 +593,9 @@ async function toggleVoiceMode() {
     // Unlock mobile audio on first interaction
     await unlockMobileAudio();
 
+    // Initialize iOS audio pool during user gesture
+    initAudioPool();
+
     // Play any pending audio that was blocked
     await playPendingAudio();
 
@@ -1048,7 +1060,8 @@ function playAudio(base64Data) {
             const blob = new Blob([byteArray], { type: mimeType });
             const audioUrl = URL.createObjectURL(blob);
 
-            const audio = new Audio();
+            // Use pooled audio on iOS for pre-unlocked element
+            const audio = isIOS ? getPooledAudio() : new Audio();
             state.aiAudio = audio;
 
             // Set attributes before setting src (important for mobile)
@@ -1067,6 +1080,8 @@ function playAudio(base64Data) {
                 state.aiAudio = null;
                 state.isSpeaking = false;
                 URL.revokeObjectURL(audioUrl);
+                // Return to pool for reuse
+                if (isIOS) returnToPool(audio);
                 resolve();
             };
 
@@ -1075,32 +1090,28 @@ function playAudio(base64Data) {
                 state.aiAudio = null;
                 state.isSpeaking = false;
                 URL.revokeObjectURL(audioUrl);
+                if (isIOS) returnToPool(audio);
                 resolve();
             };
 
-            // Set source after event handlers
+            // Set source
             audio.src = audioUrl;
 
-            // Use canplaythrough event for more reliable mobile playback
-            audio.oncanplaythrough = async () => {
-                try {
-                    await audio.play();
-                } catch (error) {
-                    console.error('Audio play failed:', error);
-                    // On mobile, if autoplay fails, try playing on next user interaction
-                    if (error.name === 'NotAllowedError') {
-                        console.warn('Autoplay blocked - audio requires user interaction');
-                        // Store for later playback on user gesture
-                        state.pendingAudio = audio;
-                    }
-                    state.isSpeaking = false;
-                    URL.revokeObjectURL(audioUrl);
-                    resolve();
+            // iOS FIX: Play immediately instead of waiting for canplaythrough
+            // Pre-unlocked pooled elements can play without waiting
+            // This maintains the user gesture context chain
+            audio.play().then(() => {
+                console.log('Audio playback started');
+            }).catch(error => {
+                console.error('Audio play failed:', error);
+                if (error.name === 'NotAllowedError') {
+                    console.warn('Autoplay blocked - storing for user gesture');
+                    state.pendingAudio = audio;
                 }
-            };
-
-            // Start loading
-            audio.load();
+                state.isSpeaking = false;
+                URL.revokeObjectURL(audioUrl);
+                resolve();
+            });
 
         } catch (error) {
             console.error('Audio playback error:', error);
@@ -1161,6 +1172,69 @@ async function playPendingAudio() {
         } catch (e) {
             console.warn('Still cannot play pending audio:', e);
         }
+    }
+}
+
+// Initialize audio pool during user gesture (iOS requirement)
+function initAudioPool() {
+    if (audioPoolInitialized || !isIOS) return;
+
+    console.log('Initializing iOS audio pool...');
+
+    // Create 3 pre-unlocked audio elements
+    for (let i = 0; i < 3; i++) {
+        const audio = new Audio();
+        audio.setAttribute('playsinline', 'true');
+        audio.setAttribute('webkit-playsinline', 'true');
+        audio.preload = 'auto';
+        audio.volume = 0.01;
+
+        // Play and immediately pause to "unlock" the element
+        // Use silent data URI
+        audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+        audio.play().then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.src = '';
+            audio.volume = 1.0;
+            audioPool.push(audio);
+            console.log(`Audio pool element ${i + 1} unlocked`);
+        }).catch(e => {
+            console.warn(`Failed to unlock audio pool element ${i}:`, e);
+        });
+    }
+
+    audioPoolInitialized = true;
+}
+
+// Get an unlocked audio element from pool
+function getPooledAudio() {
+    if (audioPool.length > 0) {
+        const audio = audioPool.pop();
+        console.log('Using pooled audio element, remaining:', audioPool.length);
+        return audio;
+    }
+    // Fallback: create new (might not work on iOS without gesture)
+    console.warn('Audio pool empty, creating new element');
+    const audio = new Audio();
+    audio.setAttribute('playsinline', 'true');
+    audio.setAttribute('webkit-playsinline', 'true');
+    return audio;
+}
+
+// Return audio element to pool for reuse
+function returnToPool(audio) {
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.src = '';
+    audio.onplay = null;
+    audio.onended = null;
+    audio.onerror = null;
+    audio.oncanplaythrough = null;
+    if (audioPool.length < 3) {
+        audioPool.push(audio);
+        console.log('Returned audio to pool, size:', audioPool.length);
     }
 }
 
