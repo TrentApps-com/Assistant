@@ -1573,18 +1573,45 @@ function closeNotificationPanel() {
 
 function detectFunctionCall(response) {
     // Try to parse as JSON to detect function call
-    try {
-        // Check if the response starts with { and ends with }
-        const trimmed = response.trim();
-        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-            const parsed = JSON.parse(trimmed);
-            if (parsed.function === 'claude_execute' && parsed.prompt) {
-                return parsed;
+    const trimmed = response.trim();
+
+    // Try multiple extraction methods
+    const jsonPatterns = [
+        // Direct JSON object
+        /^\s*(\{[\s\S]*\})\s*$/,
+        // Markdown code block with json
+        /```json\s*(\{[\s\S]*?\})\s*```/,
+        // Markdown code block without language
+        /```\s*(\{[\s\S]*?\})\s*```/,
+        // JSON embedded in text (look for function pattern)
+        /(\{"function"\s*:\s*"claude_execute"[\s\S]*?\})/
+    ];
+
+    for (const pattern of jsonPatterns) {
+        const match = trimmed.match(pattern);
+        if (match && match[1]) {
+            try {
+                const parsed = JSON.parse(match[1]);
+                if (parsed.function === 'claude_execute' && parsed.prompt) {
+                    console.log('Function call detected:', parsed);
+                    return parsed;
+                }
+            } catch (e) {
+                // Continue to next pattern
             }
         }
-    } catch (e) {
-        // Not JSON, return null
     }
+
+    // Fallback: try to parse the whole response
+    try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed.function === 'claude_execute' && parsed.prompt) {
+            return parsed;
+        }
+    } catch (e) {
+        // Not JSON
+    }
+
     return null;
 }
 

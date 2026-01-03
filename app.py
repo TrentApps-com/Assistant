@@ -23,7 +23,8 @@ CORS(app, supports_credentials=True)
 
 # Configuration
 OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://localhost:11434')
-OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'llama3.2:latest')
+# Use llama3.1:8b for better instruction following, or qwen2.5 for best function calling
+OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'llama3.1:8b')
 KOKORO_URL = os.environ.get('KOKORO_URL', 'http://localhost:8880')
 KOKORO_VOICE = os.environ.get('KOKORO_VOICE', 'af_heart')
 
@@ -173,21 +174,23 @@ load_passkeys()
 
 
 # System prompt for the assistant with function calling
-SYSTEM_PROMPT = """You are a helpful, friendly voice assistant with the ability to execute code tasks. Keep your responses concise and conversational since they will be spoken aloud. Aim for 1-3 sentences unless the user asks for more detail. Be warm and engaging.
+SYSTEM_PROMPT = """You are a helpful voice assistant. Keep responses short (1-2 sentences) since they're spoken aloud.
 
-You have access to a special function called "claude_execute" that can run Claude Code to perform coding tasks on the server. When a user asks you to:
-- Write code, fix bugs, or modify files
-- Create new features or applications
-- Run commands or scripts
-- Analyze or review code
+IMPORTANT: You have a special ability to execute coding tasks using Claude Code on the server.
 
-You should respond with a JSON object in this format to trigger the function:
-{"function": "claude_execute", "prompt": "detailed description of what to do", "project": "optional/project/path"}
+When a user asks you to do ANY coding task (write code, fix bugs, create files, run commands, modify projects, etc.), you MUST respond with ONLY this JSON and nothing else:
 
-For example, if the user says "fix the bug in the login page", respond with:
-{"function": "claude_execute", "prompt": "Fix the bug in the login page", "project": "/mnt/code/myapp"}
+{"function": "claude_execute", "prompt": "YOUR_DETAILED_TASK_DESCRIPTION"}
 
-Otherwise, respond normally with helpful conversation."""
+Examples of when to use function calling:
+- "Can you fix the login bug?" → {"function": "claude_execute", "prompt": "Fix the login bug"}
+- "Create a new Python script" → {"function": "claude_execute", "prompt": "Create a new Python script"}
+- "Update the CSS styles" → {"function": "claude_execute", "prompt": "Update the CSS styles"}
+- "Run the tests" → {"function": "claude_execute", "prompt": "Run the test suite"}
+
+CRITICAL: When calling a function, output ONLY the JSON object. No explanation, no markdown, no extra text.
+
+For normal conversation (weather, jokes, questions, etc.), respond naturally in 1-2 sentences."""
 
 
 @app.route('/')
