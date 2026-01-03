@@ -316,6 +316,9 @@ class NeonOrb {
         this.orb = new THREE.Mesh(orbGeometry, this.orbMaterial);
         this.scene.add(this.orb);
 
+        // ===== AUDIO-REACTIVE MESH BALL =====
+        this.createMeshBall();
+
         // ===== VOLUMETRIC INNER LAYERS =====
         this.innerLayers = [];
 
@@ -534,6 +537,154 @@ class NeonOrb {
         this.scene.add(this.glow);
     }
 
+    createMeshBall() {
+        // Audio-reactive wireframe mesh ball shader
+        const meshBallVertexShader = `
+            varying vec3 vPosition;
+            varying vec3 vNormal;
+            varying float vIntensity;
+            uniform float uTime;
+            uniform float uAudioLevel;
+            uniform float uBaseScale;
+
+            // Noise function for organic movement
+            float noise(vec3 p) {
+                return fract(sin(dot(p, vec3(12.9898, 78.233, 45.543))) * 43758.5453);
+            }
+
+            void main() {
+                vPosition = position;
+                vNormal = normalize(normalMatrix * normal);
+
+                // Audio-reactive scaling
+                float audioScale = 1.0 + uAudioLevel * 0.6;
+
+                // Organic breathing motion
+                float breathe = sin(uTime * 2.0 + position.x * 2.0) * 0.03;
+                breathe += sin(uTime * 3.0 + position.y * 2.0) * 0.02;
+                breathe += sin(uTime * 1.5 + position.z * 2.0) * 0.02;
+
+                // Add audio-driven displacement
+                float audioDisplace = uAudioLevel * sin(uTime * 10.0 + length(position) * 5.0) * 0.15;
+
+                // Vertex displacement for gas-like effect
+                float displacement = noise(position * 3.0 + uTime * 0.5) * 0.1;
+
+                vec3 newPos = position * uBaseScale * audioScale;
+                newPos += normal * (breathe + audioDisplace + displacement * uAudioLevel);
+
+                // Calculate intensity for edge glow
+                vIntensity = 0.8 + uAudioLevel * 0.4;
+
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
+            }
+        `;
+
+        const meshBallFragmentShader = `
+            varying vec3 vPosition;
+            varying vec3 vNormal;
+            varying float vIntensity;
+            uniform float uTime;
+            uniform float uAudioLevel;
+            uniform vec3 uColor1;
+            uniform vec3 uColor2;
+            uniform vec3 uColor3;
+
+            void main() {
+                // Calculate fresnel for edge glow
+                vec3 viewDir = normalize(cameraPosition - vPosition);
+                float fresnel = pow(1.0 - abs(dot(viewDir, vNormal)), 2.0);
+
+                // Animated color cycling
+                float colorMix = sin(uTime * 0.5 + length(vPosition) * 2.0) * 0.5 + 0.5;
+                colorMix += uAudioLevel * 0.3;
+
+                vec3 color = mix(uColor1, uColor2, colorMix);
+                color = mix(color, uColor3, fresnel * 0.5);
+
+                // Audio-reactive brightness
+                float brightness = 0.7 + uAudioLevel * 0.8;
+                color *= brightness;
+
+                // Add white hot spots based on audio
+                color += vec3(1.0) * uAudioLevel * fresnel * 0.5;
+
+                // Pulsing alpha
+                float alpha = (0.6 + uAudioLevel * 0.4) * vIntensity;
+
+                gl_FragColor = vec4(color, alpha);
+            }
+        `;
+
+        // Create icosahedron for interesting wireframe shape
+        const meshGeometry = new THREE.IcosahedronGeometry(0.5, 2);
+
+        // Wireframe mesh ball
+        this.meshBallMaterial = new THREE.ShaderMaterial({
+            vertexShader: meshBallVertexShader,
+            fragmentShader: meshBallFragmentShader,
+            uniforms: {
+                uTime: { value: 0 },
+                uAudioLevel: { value: 0 },
+                uBaseScale: { value: 0.6 },
+                uColor1: { value: new THREE.Color(0x00ffff) },
+                uColor2: { value: new THREE.Color(0x8b5cf6) },
+                uColor3: { value: new THREE.Color(0xec4899) }
+            },
+            transparent: true,
+            wireframe: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        this.meshBall = new THREE.Mesh(meshGeometry, this.meshBallMaterial);
+        this.scene.add(this.meshBall);
+
+        // Second inner mesh ball (smaller, faster rotation)
+        const innerMeshGeometry = new THREE.IcosahedronGeometry(0.35, 1);
+        this.innerMeshBallMaterial = new THREE.ShaderMaterial({
+            vertexShader: meshBallVertexShader,
+            fragmentShader: meshBallFragmentShader,
+            uniforms: {
+                uTime: { value: 0 },
+                uAudioLevel: { value: 0 },
+                uBaseScale: { value: 0.5 },
+                uColor1: { value: new THREE.Color(0xffffff) },
+                uColor2: { value: new THREE.Color(0x00ffff) },
+                uColor3: { value: new THREE.Color(0x8b5cf6) }
+            },
+            transparent: true,
+            wireframe: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        this.innerMeshBall = new THREE.Mesh(innerMeshGeometry, this.innerMeshBallMaterial);
+        this.scene.add(this.innerMeshBall);
+
+        // Third tiny core mesh (hottest center)
+        const coreMeshGeometry = new THREE.OctahedronGeometry(0.2, 1);
+        this.coreMeshMaterial = new THREE.ShaderMaterial({
+            vertexShader: meshBallVertexShader,
+            fragmentShader: meshBallFragmentShader,
+            uniforms: {
+                uTime: { value: 0 },
+                uAudioLevel: { value: 0 },
+                uBaseScale: { value: 0.4 },
+                uColor1: { value: new THREE.Color(0xffffff) },
+                uColor2: { value: new THREE.Color(0xffffff) },
+                uColor3: { value: new THREE.Color(0x00ffff) }
+            },
+            transparent: true,
+            wireframe: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        this.coreMesh = new THREE.Mesh(coreMeshGeometry, this.coreMeshMaterial);
+        this.scene.add(this.coreMesh);
+    }
+
     createParticles() {
         const particleCount = 200;
         const positions = new Float32Array(particleCount * 3);
@@ -725,6 +876,27 @@ class NeonOrb {
                 layer.rotation.y = time * (0.1 + i * 0.05);
                 layer.rotation.x = Math.sin(time * 0.3 + i) * 0.05;
             });
+        }
+
+        // Update audio-reactive mesh balls
+        if (this.meshBall) {
+            this.meshBallMaterial.uniforms.uTime.value = time;
+            this.meshBallMaterial.uniforms.uAudioLevel.value = this.audioLevel;
+            this.meshBall.rotation.y = time * 0.3;
+            this.meshBall.rotation.x = time * 0.2;
+            this.meshBall.rotation.z = Math.sin(time * 0.5) * 0.1;
+        }
+        if (this.innerMeshBall) {
+            this.innerMeshBallMaterial.uniforms.uTime.value = time;
+            this.innerMeshBallMaterial.uniforms.uAudioLevel.value = this.audioLevel;
+            this.innerMeshBall.rotation.y = -time * 0.5;
+            this.innerMeshBall.rotation.x = time * 0.3;
+        }
+        if (this.coreMesh) {
+            this.coreMeshMaterial.uniforms.uTime.value = time;
+            this.coreMeshMaterial.uniforms.uAudioLevel.value = this.audioLevel;
+            this.coreMesh.rotation.y = time * 0.8;
+            this.coreMesh.rotation.z = time * 0.6;
         }
 
         // Rotate orb subtly

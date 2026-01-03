@@ -21,11 +21,11 @@ body {
     overflow: hidden;
 }
 
-/* Interview Mode Overlay - Clean Minimal Style */
+/* Interview Mode Overlay - Transparent for Parallax Stars */
 .interview-overlay {
     position: fixed;
     inset: 0;
-    background: linear-gradient(135deg, #0a0a12 0%, #10101a 50%, #0d0d15 100%);
+    background: transparent;
     z-index: 200;
     display: flex;
     flex-direction: column;
