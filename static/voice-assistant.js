@@ -88,6 +88,11 @@ document.addEventListener('DOMContentLoaded', () => {
 function setAvatarState(avatarState) {
     elements.voiceAvatarContainer.classList.remove('listening', 'speaking', 'thinking');
     if (avatarState) elements.voiceAvatarContainer.classList.add(avatarState);
+
+    // Update WebGL orb state if available
+    if (window.neonOrb) {
+        window.neonOrb.setState(avatarState || 'idle');
+    }
 }
 
 function showCurrentText(text, faded = false) {
@@ -199,6 +204,11 @@ function startWaveformVisualization(stream) {
 
         smoothedAmplitude += (normalizedAmplitude - smoothedAmplitude) * 0.35;
 
+        // Update WebGL orb audio level if available
+        if (window.neonOrb) {
+            window.neonOrb.setAudioLevel(smoothedAmplitude);
+        }
+
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         let baseColor = { r: 124, g: 185, b: 232 }; // Logo blue neon #7CB9E8 for listening
@@ -290,6 +300,11 @@ function startSpeakingWaveform(audioElement) {
         const normalizedAmplitude = average / 255;
 
         smoothedAmplitude += (normalizedAmplitude - smoothedAmplitude) * 0.35;
+
+        // Update WebGL orb audio level if available
+        if (window.neonOrb) {
+            window.neonOrb.setAudioLevel(smoothedAmplitude);
+        }
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 

@@ -51,83 +51,8 @@
             <!-- Voice Avatar Circle with Waveform Canvas -->
             <div class="voice-avatar-container" id="voiceAvatarContainer">
                 <div class="voice-avatar-circle" id="voiceAvatarCircle">
-                    <!-- AI Avatar SVG - Neon Particle Orb -->
-                    <div class="ai-avatar" id="aiAvatar">
-                        <svg viewBox="0 0 100 100" class="ai-avatar-svg">
-                            <defs>
-                                <!-- Intense glow filter -->
-                                <filter id="neonGlow" x="-100%" y="-100%" width="300%" height="300%">
-                                    <feGaussianBlur stdDeviation="3" result="blur1"/>
-                                    <feGaussianBlur stdDeviation="6" result="blur2"/>
-                                    <feGaussianBlur stdDeviation="12" result="blur3"/>
-                                    <feMerge>
-                                        <feMergeNode in="blur3"/>
-                                        <feMergeNode in="blur2"/>
-                                        <feMergeNode in="blur1"/>
-                                        <feMergeNode in="SourceGraphic"/>
-                                    </feMerge>
-                                </filter>
-                                <!-- Particle glow -->
-                                <filter id="particleGlow" x="-200%" y="-200%" width="500%" height="500%">
-                                    <feGaussianBlur stdDeviation="2" result="blur"/>
-                                    <feMerge>
-                                        <feMergeNode in="blur"/>
-                                        <feMergeNode in="blur"/>
-                                        <feMergeNode in="SourceGraphic"/>
-                                    </feMerge>
-                                </filter>
-                                <!-- Core orb gradient - cyan to magenta -->
-                                <radialGradient id="orbCore" cx="40%" cy="40%" r="60%">
-                                    <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
-                                    <stop offset="20%" stop-color="#00ffff" stop-opacity="0.9"/>
-                                    <stop offset="50%" stop-color="#8b5cf6" stop-opacity="0.7"/>
-                                    <stop offset="80%" stop-color="#ec4899" stop-opacity="0.4"/>
-                                    <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
-                                </radialGradient>
-                                <!-- Outer aura gradient -->
-                                <radialGradient id="orbAura" cx="50%" cy="50%" r="50%">
-                                    <stop offset="0%" stop-color="#00ffff" stop-opacity="0"/>
-                                    <stop offset="60%" stop-color="#8b5cf6" stop-opacity="0.15"/>
-                                    <stop offset="85%" stop-color="#ec4899" stop-opacity="0.3"/>
-                                    <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
-                                </radialGradient>
-                                <!-- Inner shine -->
-                                <radialGradient id="innerShine" cx="35%" cy="35%" r="40%">
-                                    <stop offset="0%" stop-color="#ffffff" stop-opacity="0.8"/>
-                                    <stop offset="50%" stop-color="#00ffff" stop-opacity="0.3"/>
-                                    <stop offset="100%" stop-color="#00ffff" stop-opacity="0"/>
-                                </radialGradient>
-                            </defs>
-
-                            <!-- Outer aura ring -->
-                            <circle class="orb-aura" cx="50" cy="50" r="45" fill="url(#orbAura)"/>
-
-                            <!-- Main glowing orb -->
-                            <g class="orb-core" filter="url(#neonGlow)">
-                                <circle cx="50" cy="50" r="25" fill="url(#orbCore)"/>
-                                <circle cx="50" cy="50" r="18" fill="url(#innerShine)"/>
-                            </g>
-
-                            <!-- Orbiting particles -->
-                            <g class="orb-particles" filter="url(#particleGlow)">
-                                <!-- Inner orbit -->
-                                <circle class="particle p1" cx="50" cy="22" r="2.5" fill="#00ffff"/>
-                                <circle class="particle p2" cx="78" cy="50" r="2" fill="#ec4899"/>
-                                <circle class="particle p3" cx="50" cy="78" r="2.2" fill="#8b5cf6"/>
-                                <circle class="particle p4" cx="22" cy="50" r="1.8" fill="#00ffff"/>
-                                <!-- Outer orbit -->
-                                <circle class="particle p5" cx="30" cy="20" r="1.5" fill="#ec4899"/>
-                                <circle class="particle p6" cx="80" cy="30" r="1.8" fill="#8b5cf6"/>
-                                <circle class="particle p7" cx="75" cy="75" r="1.6" fill="#00ffff"/>
-                                <circle class="particle p8" cx="25" cy="70" r="1.4" fill="#ec4899"/>
-                                <!-- Micro particles -->
-                                <circle class="particle p9" cx="40" cy="15" r="1" fill="#ffffff"/>
-                                <circle class="particle p10" cx="85" cy="45" r="0.8" fill="#ffffff"/>
-                                <circle class="particle p11" cx="60" cy="85" r="1.1" fill="#ffffff"/>
-                                <circle class="particle p12" cx="15" cy="55" r="0.9" fill="#ffffff"/>
-                            </g>
-                        </svg>
-                    </div>
+                    <!-- WebGL Neon Orb Container -->
+                    <div class="ai-avatar" id="aiAvatar"></div>
                     <canvas class="voice-waveform" id="voiceWaveform" width="200" height="200"></canvas>
                 </div>
             </div>
@@ -139,6 +64,11 @@
         </div>
     </div>
 
+    <!-- Three.js for WebGL -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- WebGL Neon Orb -->
+    <script src="/static/orb.js"></script>
+    <!-- Voice Assistant -->
     <script src="/static/voice-assistant.js"></script>
 </body>
 </html>
