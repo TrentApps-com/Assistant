@@ -246,45 +246,70 @@ class NeonOrb {
                     float dist = length(position);
                     vDist = dist;
 
-                    // Complex swirling motion
-                    float angle = uTime * 0.4 + phase;
-                    float r = length(position.xz);
-                    float swirl = angle + r * 3.0 + layer * 2.0;
+                    // === AUDIO-REACTIVE STIRRING ===
+                    // Base rotation speed increases dramatically with audio
+                    float baseSpeed = 0.3;
+                    float activeSpeed = baseSpeed + uAudioLevel * 2.5; // Much faster when active
 
-                    // Multiple rotation axes for turbulent look
-                    float s1 = sin(swirl * 0.25);
-                    float c1 = cos(swirl * 0.25);
+                    // Swirl angle - faster rotation when audio is present
+                    float angle = uTime * activeSpeed + phase;
+                    float r = length(position.xz);
+                    float swirl = angle + r * (2.0 + uAudioLevel * 4.0) + layer * 2.0;
+
+                    // Primary rotation - speed scales with audio
+                    float rotSpeed1 = 0.2 + uAudioLevel * 0.8;
+                    float s1 = sin(swirl * rotSpeed1);
+                    float c1 = cos(swirl * rotSpeed1);
                     pos.xz = mat2(c1, -s1, s1, c1) * pos.xz;
 
-                    // Secondary rotation for more chaos
-                    float s2 = sin(swirl * 0.15 + 1.57);
-                    float c2 = cos(swirl * 0.15 + 1.57);
+                    // Secondary rotation on different axis - creates tumbling
+                    float rotSpeed2 = 0.15 + uAudioLevel * 0.6;
+                    float s2 = sin(swirl * rotSpeed2 + 1.57);
+                    float c2 = cos(swirl * rotSpeed2 + 1.57);
                     pos.xy = mat2(c2, -s2, s2, c2) * pos.xy;
 
-                    // Vertical wave motion
-                    pos.y += sin(uTime * 1.5 + phase * 4.0 + dist * 5.0) * 0.04;
+                    // Third axis rotation for full 3D stirring when active
+                    float rotSpeed3 = uAudioLevel * 0.5;
+                    float s3 = sin(uTime * 1.5 + phase * 2.0);
+                    float c3 = cos(uTime * 1.5 + phase * 2.0);
+                    pos.yz = mat2(c3, -s3 * rotSpeed3, s3 * rotSpeed3, c3) * pos.yz;
 
-                    // Radial pulsing with audio - more dramatic
-                    float breathe = 1.0 + sin(uTime * 2.5 + phase + layer * 3.0) * 0.12;
-                    breathe += uAudioLevel * 0.5;
-                    pos *= breathe;
+                    // === OUTWARD EXPANSION when active ===
+                    // Particles push outward from center based on audio
+                    float expansion = 1.0 + uAudioLevel * 0.4; // Expand cloud radius
+                    // Inner particles expand more than outer ones (creates stirring effect)
+                    float innerExpansion = (1.0 - dist) * uAudioLevel * 0.3;
+                    pos *= expansion + innerExpansion;
 
-                    // FBM-based displacement for organic turbulence
-                    vec3 noisePos = pos * 3.0 + uTime * 0.3;
+                    // === ORBITAL DRIFT ===
+                    // Particles drift in elliptical paths when active
+                    float orbitPhase = uTime * (0.5 + uAudioLevel * 2.0) + phase * 6.28;
+                    float orbitRadius = 0.05 + uAudioLevel * 0.15;
+                    pos.x += sin(orbitPhase) * orbitRadius * (1.0 - layer);
+                    pos.z += cos(orbitPhase * 1.3) * orbitRadius * (1.0 - layer);
+                    pos.y += sin(orbitPhase * 0.7 + phase) * orbitRadius * 0.5;
+
+                    // === TURBULENT DISPLACEMENT ===
+                    // More chaotic displacement when audio is high
+                    float turbulenceStrength = 0.1 + uAudioLevel * 0.4;
+                    vec3 noisePos = pos * 3.0 + uTime * (0.3 + uAudioLevel * 1.5);
                     float n = fbm(noisePos);
-                    vec3 displacement = normalize(pos) * (n - 0.5) * 0.15 * (1.0 + uAudioLevel * 2.0);
+                    vec3 displacement = normalize(pos + vec3(0.001)) * (n - 0.5) * turbulenceStrength;
                     pos += displacement;
+
+                    // Subtle vertical wave
+                    pos.y += sin(uTime * 1.5 + phase * 4.0 + dist * 5.0) * 0.03;
 
                     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
-                    // Size varies with distance, layer, and audio
-                    float sizeMultiplier = 1.0 + (1.0 - dist) * 0.8 + uAudioLevel * 0.8;
-                    sizeMultiplier *= 0.7 + layer * 0.6; // Outer particles slightly larger
-                    gl_PointSize = size * (280.0 / -mvPosition.z) * sizeMultiplier;
+                    // Size - slightly smaller when expanded to maintain density look
+                    float sizeMultiplier = 1.0 + (1.0 - dist) * 0.6;
+                    sizeMultiplier *= 0.7 + layer * 0.5;
+                    gl_PointSize = size * (260.0 / -mvPosition.z) * sizeMultiplier;
 
-                    // Alpha based on position and audio
-                    vAlpha = 0.5 + uAudioLevel * 0.5;
-                    vAlpha *= 0.6 + (1.0 - dist) * 0.6; // Brighter near center
+                    // Alpha - brighter when active
+                    vAlpha = 0.5 + uAudioLevel * 0.4;
+                    vAlpha *= 0.6 + (1.0 - dist) * 0.5;
 
                     gl_Position = projectionMatrix * mvPosition;
                 }
@@ -380,22 +405,38 @@ class NeonOrb {
                 void main() {
                     vec3 pos = position;
 
-                    // Faster, more chaotic movement
-                    float angle = uTime * 0.8 + phase * 2.0;
-                    float s = sin(angle * 0.5);
-                    float c = cos(angle * 0.5);
-                    pos.xz = mat2(c, -s, s, c) * pos.xz;
-                    pos.yz = mat2(c, s, -s, c) * pos.yz;
+                    // === CHAOTIC STIRRING - faster and more intense than main cloud ===
+                    float activeSpeed = 0.6 + uAudioLevel * 3.0;
+                    float angle = uTime * activeSpeed + phase * 2.0;
 
-                    // Breathing
-                    float breathe = 1.0 + sin(uTime * 4.0 + phase) * 0.15;
-                    breathe += uAudioLevel * 0.6;
-                    pos *= breathe;
+                    // Multi-axis rotation for chaotic tumbling
+                    float s = sin(angle * 0.4);
+                    float c = cos(angle * 0.4);
+                    pos.xz = mat2(c, -s, s, c) * pos.xz;
+
+                    float s2 = sin(angle * 0.3 + 1.0);
+                    float c2 = cos(angle * 0.3 + 1.0);
+                    pos.yz = mat2(c2, s2, -s2, c2) * pos.yz;
+
+                    // Third axis when active
+                    float s3 = sin(uTime * 2.0 + phase);
+                    float c3 = cos(uTime * 2.0 + phase);
+                    pos.xy = mat2(c3, -s3 * uAudioLevel, s3 * uAudioLevel, c3) * pos.xy;
+
+                    // Expansion outward
+                    float expansion = 1.0 + uAudioLevel * 0.5;
+                    pos *= expansion;
+
+                    // Orbital wobble
+                    float orbitPhase = uTime * (1.0 + uAudioLevel * 3.0) + phase * 6.28;
+                    pos.x += sin(orbitPhase) * 0.08 * uAudioLevel;
+                    pos.z += cos(orbitPhase * 1.5) * 0.08 * uAudioLevel;
+                    pos.y += sin(orbitPhase * 0.8) * 0.05 * uAudioLevel;
 
                     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-                    gl_PointSize = size * (200.0 / -mvPosition.z) * (1.0 + uAudioLevel * 0.5);
+                    gl_PointSize = size * (180.0 / -mvPosition.z);
 
-                    vAlpha = 0.4 + uAudioLevel * 0.4;
+                    vAlpha = 0.35 + uAudioLevel * 0.35;
                     gl_Position = projectionMatrix * mvPosition;
                 }
             `,
@@ -745,27 +786,23 @@ class NeonOrb {
             this.aura.rotation.z = time * 0.5;
         }
 
-        // ===== STATE-SPECIFIC ANIMATIONS =====
-        // Apply to inner cloud for visible effect
+        // ===== STATE-SPECIFIC BASE ROTATION =====
+        // Shaders handle the stirring/expansion via uAudioLevel
+        // Just add gentle base rotation here for variety
         if (this.innerCloud) {
-            let scale = 1.0;
-            if (this.state === 'speaking') {
-                scale = 1 + Math.sin(time * 12) * 0.08 + smoothedAudio * 0.15;
-            } else if (this.state === 'listening') {
-                scale = 1 + Math.sin(time * 3) * 0.05 + smoothedAudio * 0.1;
-            } else if (this.state === 'thinking') {
-                scale = 1 + Math.sin(time * 1.5) * 0.03;
-                this.innerCloud.rotation.y = time * 0.4; // Faster rotation when thinking
-            } else {
-                scale = 1 + Math.sin(time * 1.5) * 0.02;
+            // Thinking state gets faster base rotation
+            if (this.state === 'thinking') {
+                this.innerCloud.rotation.y = time * 0.3;
             }
-            this.innerCloud.scale.setScalar(scale);
+            // Mouse interaction - subtle follow
+            this.innerCloud.rotation.x += this.mouse.y * 0.008;
+            this.innerCloud.rotation.y += this.mouse.x * 0.008;
         }
 
-        // Mouse interaction - subtle follow for clouds
-        if (this.innerCloud) {
-            this.innerCloud.rotation.x += this.mouse.y * 0.01;
-            this.innerCloud.rotation.y += this.mouse.x * 0.01;
+        if (this.detailCloud) {
+            // Counter-rotate detail cloud for depth
+            this.detailCloud.rotation.x += this.mouse.y * -0.005;
+            this.detailCloud.rotation.z += this.mouse.x * 0.005;
         }
 
         this.renderer.render(this.scene, this.camera);
