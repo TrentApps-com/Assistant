@@ -463,24 +463,24 @@ function toggleMute() {
         // If processing/speaking, let it continue - just mic is off
 
     } else {
-        // UNMUTED - re-acquire microphone if voice mode is active
-        // Wait until AI is done speaking/processing before listening again
-        if (state.isActive) {
-            if (!state.isSpeaking && !state.isProcessing) {
-                // Re-request microphone access immediately
-                navigator.mediaDevices.getUserMedia({ audio: true })
-                    .then(stream => {
-                        waveformAudioStream = stream;
-                        startIdleWaveform();
-                        startListening();
-                    })
-                    .catch(err => {
-                        console.error('Failed to re-acquire microphone:', err);
-                        showCurrentText('Microphone access denied');
-                    });
-            }
-            // If speaking/processing, mic will be acquired when AI finishes
+        // UNMUTED - update visual immediately
+        showCurrentText('Tap the circle to start speaking');
+        setAvatarState('idle');
+
+        // If voice mode is active and not busy, re-acquire mic and resume
+        if (state.isActive && !state.isSpeaking && !state.isProcessing) {
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    waveformAudioStream = stream;
+                    startIdleWaveform();
+                    startListening();
+                })
+                .catch(err => {
+                    console.error('Failed to re-acquire microphone:', err);
+                    showCurrentText('Microphone access denied');
+                });
         }
+        // If not active or busy, just show unmuted state - user can tap orb to start
     }
 }
 
