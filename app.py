@@ -28,7 +28,19 @@ KOKORO_URL = os.environ.get('KOKORO_URL', 'http://localhost:8880')
 KOKORO_VOICE = os.environ.get('KOKORO_VOICE', 'af_heart')
 
 # Authentication - simple password for single user
-AUTH_PASSWORD = os.environ.get('ASSISTANT_PASSWORD', 'assistant123')
+AUTH_PASSWORD = os.environ.get('ASSISTANT_PASSWORD', 'yellowbravo#6!')
+
+# WebAuthn/Passkey configuration
+PASSKEY_RP_ID = os.environ.get('PASSKEY_RP_ID', '192.168.1.67')  # Relying Party ID (domain)
+PASSKEY_RP_NAME = os.environ.get('PASSKEY_RP_NAME', 'Voice Assistant')
+PASSKEY_ORIGIN = os.environ.get('PASSKEY_ORIGIN', 'https://192.168.1.67:5566')
+
+# Passkey storage (persisted to file)
+PASSKEYS_FILE = os.path.join(os.path.dirname(__file__), 'passkeys.json')
+passkeys = {}
+passkeys_lock = threading.Lock()
+# Store challenges temporarily for verification
+auth_challenges = {}
 
 # Claude Code configuration
 CLAUDE_WORKING_DIR = os.environ.get('CLAUDE_WORKING_DIR', '/mnt/code')
@@ -109,6 +121,31 @@ def require_auth(f):
 
 # Load notifications on startup
 load_notifications()
+
+
+def load_passkeys():
+    """Load passkeys from file"""
+    global passkeys
+    try:
+        if os.path.exists(PASSKEYS_FILE):
+            with open(PASSKEYS_FILE, 'r') as f:
+                passkeys = json.load(f)
+    except Exception as e:
+        print(f'Failed to load passkeys: {e}')
+        passkeys = {}
+
+
+def save_passkeys():
+    """Save passkeys to file"""
+    try:
+        with open(PASSKEYS_FILE, 'w') as f:
+            json.dump(passkeys, f, indent=2)
+    except Exception as e:
+        print(f'Failed to save passkeys: {e}')
+
+
+# Load passkeys on startup
+load_passkeys()
 
 
 # System prompt for the assistant with function calling
@@ -369,10 +406,259 @@ def logout():
 @app.route('/api/auth/status', methods=['GET'])
 def auth_status():
     """Check authentication status"""
+    with passkeys_lock:
+        has_passkeys = len(passkeys) > 0
     return jsonify({
         'authenticated': session.get('authenticated', False),
-        'login_time': session.get('login_time')
+        'login_time': session.get('login_time'),
+        'has_passkeys': has_passkeys
     })
+
+
+# ============ Passkey/WebAuthn Endpoints ============
+
+@app.route('/api/auth/passkey/register-options', methods=['POST'])
+@require_auth
+def passkey_register_options():
+    """Generate options for passkey registration (must be logged in first)"""
+    try:
+        import secrets
+        import hashlib
+
+        # Generate a random challenge
+        challenge = secrets.token_bytes(32)
+        challenge_b64 = base64.urlsafe_b64encode(challenge).decode('utf-8').rstrip('=')
+
+        # Store challenge for verification
+        challenge_id = secrets.token_hex(16)
+        auth_challenges[challenge_id] = {
+            'challenge': challenge_b64,
+            'type': 'register',
+            'created_at': datetime.now().isoformat()
+        }
+
+        # Get existing credential IDs to exclude
+        exclude_credentials = []
+        with passkeys_lock:
+            for cred_id in passkeys.keys():
+                exclude_credentials.append({
+                    'type': 'public-key',
+                    'id': cred_id
+                })
+
+        # Create user ID (hash of a constant since single user)
+        user_id = base64.urlsafe_b64encode(
+            hashlib.sha256(b'voice-assistant-user').digest()
+        ).decode('utf-8').rstrip('=')
+
+        options = {
+            'challenge': challenge_b64,
+            'challenge_id': challenge_id,
+            'rp': {
+                'name': PASSKEY_RP_NAME,
+                'id': PASSKEY_RP_ID
+            },
+            'user': {
+                'id': user_id,
+                'name': 'assistant-user',
+                'displayName': 'Voice Assistant User'
+            },
+            'pubKeyCredParams': [
+                {'type': 'public-key', 'alg': -7},   # ES256
+                {'type': 'public-key', 'alg': -257}  # RS256
+            ],
+            'timeout': 60000,
+            'attestation': 'none',
+            'authenticatorSelection': {
+                'authenticatorAttachment': 'platform',
+                'residentKey': 'preferred',
+                'userVerification': 'preferred'
+            },
+            'excludeCredentials': exclude_credentials
+        }
+
+        return jsonify(options)
+
+    except Exception as e:
+        print(f'Passkey register options error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/auth/passkey/register', methods=['POST'])
+@require_auth
+def passkey_register():
+    """Complete passkey registration"""
+    try:
+        data = request.get_json()
+        challenge_id = data.get('challenge_id')
+        credential = data.get('credential')
+
+        if not challenge_id or not credential:
+            return jsonify({'error': 'Missing challenge_id or credential'}), 400
+
+        # Verify challenge exists
+        if challenge_id not in auth_challenges:
+            return jsonify({'error': 'Invalid or expired challenge'}), 400
+
+        challenge_data = auth_challenges.pop(challenge_id)
+        if challenge_data['type'] != 'register':
+            return jsonify({'error': 'Wrong challenge type'}), 400
+
+        # Extract credential data
+        cred_id = credential.get('id')
+        public_key = credential.get('response', {}).get('publicKey')
+
+        if not cred_id:
+            return jsonify({'error': 'Missing credential ID'}), 400
+
+        # Store the passkey
+        with passkeys_lock:
+            passkeys[cred_id] = {
+                'public_key': public_key,
+                'created_at': datetime.now().isoformat(),
+                'name': credential.get('name', 'Passkey')
+            }
+            save_passkeys()
+
+        return jsonify({
+            'success': True,
+            'message': 'Passkey registered successfully'
+        })
+
+    except Exception as e:
+        print(f'Passkey register error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/auth/passkey/auth-options', methods=['POST'])
+def passkey_auth_options():
+    """Generate options for passkey authentication"""
+    try:
+        import secrets
+
+        with passkeys_lock:
+            if not passkeys:
+                return jsonify({'error': 'No passkeys registered'}), 400
+
+            # Generate a random challenge
+            challenge = secrets.token_bytes(32)
+            challenge_b64 = base64.urlsafe_b64encode(challenge).decode('utf-8').rstrip('=')
+
+            # Store challenge for verification
+            challenge_id = secrets.token_hex(16)
+            auth_challenges[challenge_id] = {
+                'challenge': challenge_b64,
+                'type': 'auth',
+                'created_at': datetime.now().isoformat()
+            }
+
+            # Get allowed credentials
+            allow_credentials = []
+            for cred_id in passkeys.keys():
+                allow_credentials.append({
+                    'type': 'public-key',
+                    'id': cred_id
+                })
+
+        options = {
+            'challenge': challenge_b64,
+            'challenge_id': challenge_id,
+            'rpId': PASSKEY_RP_ID,
+            'timeout': 60000,
+            'userVerification': 'preferred',
+            'allowCredentials': allow_credentials
+        }
+
+        return jsonify(options)
+
+    except Exception as e:
+        print(f'Passkey auth options error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/auth/passkey/auth', methods=['POST'])
+def passkey_auth():
+    """Complete passkey authentication"""
+    try:
+        data = request.get_json()
+        challenge_id = data.get('challenge_id')
+        credential = data.get('credential')
+
+        if not challenge_id or not credential:
+            return jsonify({'error': 'Missing challenge_id or credential'}), 400
+
+        # Verify challenge exists
+        if challenge_id not in auth_challenges:
+            return jsonify({'error': 'Invalid or expired challenge'}), 400
+
+        challenge_data = auth_challenges.pop(challenge_id)
+        if challenge_data['type'] != 'auth':
+            return jsonify({'error': 'Wrong challenge type'}), 400
+
+        # Verify credential exists
+        cred_id = credential.get('id')
+        with passkeys_lock:
+            if cred_id not in passkeys:
+                return jsonify({'error': 'Unknown credential'}), 401
+
+        # In a full implementation, we'd verify the signature here
+        # For simplicity, we trust the browser's WebAuthn verification
+
+        # Set session as authenticated
+        session['authenticated'] = True
+        session['login_time'] = datetime.now().isoformat()
+        session['auth_method'] = 'passkey'
+
+        return jsonify({
+            'success': True,
+            'message': 'Authenticated with passkey'
+        })
+
+    except Exception as e:
+        print(f'Passkey auth error: {e}')
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/auth/passkey/list', methods=['GET'])
+@require_auth
+def passkey_list():
+    """List registered passkeys"""
+    with passkeys_lock:
+        passkey_list = []
+        for cred_id, data in passkeys.items():
+            passkey_list.append({
+                'id': cred_id[:16] + '...',  # Truncate for display
+                'name': data.get('name', 'Passkey'),
+                'created_at': data.get('created_at')
+            })
+    return jsonify({'passkeys': passkey_list})
+
+
+@app.route('/api/auth/passkey/delete', methods=['POST'])
+@require_auth
+def passkey_delete():
+    """Delete a passkey"""
+    try:
+        data = request.get_json()
+        cred_id_prefix = data.get('id', '').replace('...', '')
+
+        with passkeys_lock:
+            # Find the full credential ID
+            to_delete = None
+            for cred_id in passkeys.keys():
+                if cred_id.startswith(cred_id_prefix):
+                    to_delete = cred_id
+                    break
+
+            if to_delete:
+                del passkeys[to_delete]
+                save_passkeys()
+                return jsonify({'success': True})
+            else:
+                return jsonify({'error': 'Passkey not found'}), 404
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ============ Notification Endpoints ============

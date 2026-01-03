@@ -598,6 +598,153 @@ body {
     min-height: 1.25rem;
 }
 
+/* Login Divider */
+.login-divider {
+    display: flex;
+    align-items: center;
+    margin: 1rem 0;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.login-divider::before,
+.login-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.login-divider span {
+    padding: 0 0.75rem;
+}
+
+/* Passkey Button */
+.passkey-btn {
+    width: 100%;
+    padding: 0.875rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.passkey-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(139, 92, 246, 0.4);
+    transform: translateY(-1px);
+}
+
+.passkey-btn:active {
+    transform: translateY(0);
+}
+
+.passkey-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+.passkey-btn.secondary {
+    background: transparent;
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    font-size: 0.875rem;
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.passkey-btn.secondary:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-style: solid;
+}
+
+/* Passkey Management in Settings */
+.passkey-list {
+    margin-top: 0.75rem;
+}
+
+.passkey-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.passkey-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.passkey-item-name {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.passkey-item-date {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.passkey-delete-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 4px;
+    transition: color 0.2s ease, background 0.2s ease;
+}
+
+.passkey-delete-btn:hover {
+    color: var(--error);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* Logout Button */
+.logout-btn {
+    width: 100%;
+    padding: 0.75rem;
+    margin-top: 1rem;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    color: rgba(239, 68, 68, 0.9);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.logout-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+.logout-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
 /* Notification Button */
 .notification-btn {
     position: absolute;

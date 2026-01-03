@@ -34,3 +34,5 @@ test-results/
 
 # SSL Certs
 certs/
+notifications.json
+passkeys.json

@@ -80,6 +80,11 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.loginForm = document.getElementById('loginForm');
     elements.loginPassword = document.getElementById('loginPassword');
     elements.loginError = document.getElementById('loginError');
+    elements.loginDivider = document.getElementById('loginDivider');
+    elements.passkeyLoginBtn = document.getElementById('passkeyLoginBtn');
+    elements.passkeyList = document.getElementById('passkeyList');
+    elements.registerPasskeyBtn = document.getElementById('registerPasskeyBtn');
+    elements.logoutBtn = document.getElementById('logoutBtn');
 
     // Notification elements
     elements.notificationBtn = document.getElementById('notificationBtn');
@@ -98,6 +103,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Login event listeners
     elements.loginForm.addEventListener('submit', handleLogin);
+    elements.passkeyLoginBtn.addEventListener('click', loginWithPasskey);
+    elements.registerPasskeyBtn.addEventListener('click', registerPasskey);
+    elements.logoutBtn.addEventListener('click', handleLogout);
 
     // Notification event listeners
     elements.notificationBtn.addEventListener('click', toggleNotificationPanel);
@@ -1038,9 +1046,19 @@ async function checkAuthStatus() {
             state.isAuthenticated = true;
             elements.loginOverlay.classList.add('hidden');
             startNotificationPolling();
+            loadPasskeys(); // Load passkeys in settings when authenticated
         } else {
             state.isAuthenticated = false;
             elements.loginOverlay.classList.remove('hidden');
+
+            // Check if passkeys are available and WebAuthn is supported
+            if (data.has_passkeys && window.PublicKeyCredential) {
+                elements.loginDivider.style.display = 'flex';
+                elements.passkeyLoginBtn.style.display = 'flex';
+            } else {
+                elements.loginDivider.style.display = 'none';
+                elements.passkeyLoginBtn.style.display = 'none';
+            }
         }
     } catch (error) {
         console.error('Auth status check failed:', error);
@@ -1080,6 +1098,283 @@ async function handleLogin(e) {
         console.error('Login error:', error);
         elements.loginError.textContent = 'Connection error. Please try again.';
     }
+}
+
+// ============ Passkey (WebAuthn) Functions ============
+
+async function loginWithPasskey() {
+    if (!window.PublicKeyCredential) {
+        elements.loginError.textContent = 'WebAuthn not supported in this browser';
+        return;
+    }
+
+    try {
+        elements.loginError.textContent = '';
+        elements.passkeyLoginBtn.disabled = true;
+        elements.passkeyLoginBtn.textContent = 'Authenticating...';
+
+        // Get authentication options from server
+        const optionsRes = await fetch('/api/auth/passkey/auth-options', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        });
+
+        if (!optionsRes.ok) {
+            throw new Error('Failed to get authentication options');
+        }
+
+        const options = await optionsRes.json();
+
+        // Convert base64url to ArrayBuffer
+        options.challenge = base64UrlToArrayBuffer(options.challenge);
+        if (options.allowCredentials) {
+            options.allowCredentials = options.allowCredentials.map(cred => ({
+                ...cred,
+                id: base64UrlToArrayBuffer(cred.id)
+            }));
+        }
+
+        // Request credential from authenticator
+        const credential = await navigator.credentials.get({
+            publicKey: options
+        });
+
+        // Send credential to server for verification
+        const verifyRes = await fetch('/api/auth/passkey/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                id: credential.id,
+                rawId: arrayBufferToBase64Url(credential.rawId),
+                response: {
+                    authenticatorData: arrayBufferToBase64Url(credential.response.authenticatorData),
+                    clientDataJSON: arrayBufferToBase64Url(credential.response.clientDataJSON),
+                    signature: arrayBufferToBase64Url(credential.response.signature),
+                    userHandle: credential.response.userHandle ?
+                        arrayBufferToBase64Url(credential.response.userHandle) : null
+                },
+                type: credential.type
+            })
+        });
+
+        const data = await verifyRes.json();
+
+        if (verifyRes.ok && data.success) {
+            state.isAuthenticated = true;
+            elements.loginOverlay.classList.add('hidden');
+            elements.loginError.textContent = '';
+            startNotificationPolling();
+            loadPasskeys();
+        } else {
+            elements.loginError.textContent = data.error || 'Passkey authentication failed';
+        }
+
+    } catch (error) {
+        console.error('Passkey login error:', error);
+        if (error.name === 'NotAllowedError') {
+            elements.loginError.textContent = 'Authentication cancelled';
+        } else {
+            elements.loginError.textContent = 'Passkey authentication failed';
+        }
+    } finally {
+        elements.passkeyLoginBtn.disabled = false;
+        elements.passkeyLoginBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                <path d="M12 1C8.14 1 5 4.14 5 8c0 2.38 1.19 4.47 3 5.74V17h2v-2h4v2h2v-3.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7zm-1 11H9V9h2v3zm4 0h-2V9h2v3z"/>
+            </svg>
+            Login with Passkey`;
+    }
+}
+
+async function registerPasskey() {
+    if (!window.PublicKeyCredential) {
+        alert('WebAuthn not supported in this browser');
+        return;
+    }
+
+    if (!state.isAuthenticated) {
+        alert('Please log in first to register a passkey');
+        return;
+    }
+
+    try {
+        elements.registerPasskeyBtn.disabled = true;
+        elements.registerPasskeyBtn.textContent = 'Registering...';
+
+        // Get registration options from server
+        const optionsRes = await fetch('/api/auth/passkey/register-options', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        });
+
+        if (!optionsRes.ok) {
+            throw new Error('Failed to get registration options');
+        }
+
+        const options = await optionsRes.json();
+
+        // Convert base64url to ArrayBuffer
+        options.challenge = base64UrlToArrayBuffer(options.challenge);
+        options.user.id = base64UrlToArrayBuffer(options.user.id);
+        if (options.excludeCredentials) {
+            options.excludeCredentials = options.excludeCredentials.map(cred => ({
+                ...cred,
+                id: base64UrlToArrayBuffer(cred.id)
+            }));
+        }
+
+        // Create credential with authenticator
+        const credential = await navigator.credentials.create({
+            publicKey: options
+        });
+
+        // Send credential to server for registration
+        const registerRes = await fetch('/api/auth/passkey/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                id: credential.id,
+                rawId: arrayBufferToBase64Url(credential.rawId),
+                response: {
+                    attestationObject: arrayBufferToBase64Url(credential.response.attestationObject),
+                    clientDataJSON: arrayBufferToBase64Url(credential.response.clientDataJSON)
+                },
+                type: credential.type
+            })
+        });
+
+        const data = await registerRes.json();
+
+        if (registerRes.ok && data.success) {
+            alert('Passkey registered successfully!');
+            loadPasskeys();
+        } else {
+            alert(data.error || 'Failed to register passkey');
+        }
+
+    } catch (error) {
+        console.error('Passkey registration error:', error);
+        if (error.name === 'NotAllowedError') {
+            alert('Registration cancelled');
+        } else if (error.name === 'InvalidStateError') {
+            alert('This passkey is already registered');
+        } else {
+            alert('Failed to register passkey: ' + error.message);
+        }
+    } finally {
+        elements.registerPasskeyBtn.disabled = false;
+        elements.registerPasskeyBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+            </svg>
+            Add New Passkey`;
+    }
+}
+
+async function loadPasskeys() {
+    try {
+        const res = await fetch('/api/auth/passkey/list', { credentials: 'include' });
+        const data = await res.json();
+
+        if (!data.passkeys || data.passkeys.length === 0) {
+            elements.passkeyList.innerHTML = '<div class="notification-empty" style="padding: 0.5rem; font-size: 0.8rem;">No passkeys registered</div>';
+            return;
+        }
+
+        elements.passkeyList.innerHTML = data.passkeys.map(passkey => {
+            const createdDate = new Date(passkey.created_at).toLocaleDateString();
+            return `
+                <div class="passkey-item" data-id="${passkey.id}">
+                    <div class="passkey-item-info">
+                        <span class="passkey-item-name">${escapeHtml(passkey.name || 'Passkey')}</span>
+                        <span class="passkey-item-date">Added ${createdDate}</span>
+                    </div>
+                    <button class="passkey-delete-btn" onclick="deletePasskey('${passkey.id}')" title="Delete passkey">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                        </svg>
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error('Failed to load passkeys:', error);
+    }
+}
+
+async function deletePasskey(id) {
+    if (!confirm('Are you sure you want to delete this passkey?')) {
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/auth/passkey/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ id })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            loadPasskeys();
+        } else {
+            alert(data.error || 'Failed to delete passkey');
+        }
+    } catch (error) {
+        console.error('Failed to delete passkey:', error);
+        alert('Failed to delete passkey');
+    }
+}
+
+async function handleLogout() {
+    try {
+        const res = await fetch('/api/auth/logout', {
+            method: 'POST',
+            credentials: 'include'
+        });
+
+        if (res.ok) {
+            state.isAuthenticated = false;
+            stopNotificationPolling();
+            stopVoiceMode();
+            closeSettings();
+            elements.loginOverlay.classList.remove('hidden');
+
+            // Re-check auth status to update passkey button visibility
+            checkAuthStatus();
+        }
+    } catch (error) {
+        console.error('Logout error:', error);
+    }
+}
+
+// WebAuthn helper functions
+function base64UrlToArrayBuffer(base64url) {
+    const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+    const padding = '='.repeat((4 - base64.length % 4) % 4);
+    const binary = atob(base64 + padding);
+    const buffer = new ArrayBuffer(binary.length);
+    const view = new Uint8Array(buffer);
+    for (let i = 0; i < binary.length; i++) {
+        view[i] = binary.charCodeAt(i);
+    }
+    return buffer;
+}
+
+function arrayBufferToBase64Url(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 
 // ============ Notification Functions ============
@@ -1289,3 +1584,6 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+// Make deletePasskey available globally for onclick handlers
+window.deletePasskey = deletePasskey;
