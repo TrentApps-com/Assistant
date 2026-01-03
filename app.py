@@ -256,50 +256,89 @@ def get_system_prompt():
 
     return f"""You are a helpful voice assistant. Keep responses short (1-2 sentences) since they're spoken aloud.
 
-IMPORTANT: You have a special ability to execute coding tasks using Claude Code on the server.
+You have a special ability to execute coding tasks using Claude Code on the server.
 
 {projects_info}
 
-When a user mentions a project by name (like "YourStory", "FormFlow", "the voice assistant", etc.), include the project name in the "project" field of your JSON response. The system will resolve it to the correct path.
+For normal conversation (weather, jokes, general questions), respond naturally in 1-2 sentences."""
 
-You have TWO execution modes:
 
-1. QUICK MODE (mode: "quick") - Default for simple tasks
-   - Runs in background
-   - User gets a notification when complete
-   - Use for: quick fixes, simple commands, tests, deployments
+def get_classification_prompt():
+    """Get prompt for classifying user intent"""
+    projects_info = get_projects_summary()
 
-2. STREAM MODE (mode: "stream") - For complex tasks or when user wants to watch
-   - Opens a terminal window showing real-time output
-   - User can see progress and approve actions
-   - Use when: user says "show me", "let me watch", "stream it", or for complex multi-step tasks
+    return f"""Analyze this message and determine if it's a coding/development task.
 
-When a user asks you to do ANY coding task, respond in this format:
+{projects_info}
 
-1. Brief acknowledgment (spoken aloud)
-2. JSON function call on a new line with mode and project specified
+Coding tasks include: fixing bugs, running tests, updating code, refactoring, deployments, git operations, file modifications, etc.
 
-Examples:
+Non-coding tasks include: weather, jokes, general questions, greetings, etc.
 
-User: "Fix the typo in the README"
-Response: I'll fix that typo for you.
-{{"function": "claude_execute", "prompt": "Fix typos in README.md", "mode": "quick"}}
+Respond with JSON only."""
 
-User: "Update the login page in FormFlow"
-Response: I'll update the login page in FormFlow.
-{{"function": "claude_execute", "prompt": "Update the login page styling", "project": "formflow", "mode": "quick"}}
 
-User: "Run the tests in YourStory and show me"
-Response: Let me show you the test results in the terminal.
-{{"function": "claude_execute", "prompt": "Run the test suite", "project": "yourstory", "mode": "stream"}}
+def get_function_call_prompt():
+    """Get prompt for generating function calls"""
+    projects_info = get_projects_summary()
 
-User: "Refactor the authentication in the voice assistant"
-Response: That's a complex task. Let me show you the progress.
-{{"function": "claude_execute", "prompt": "Refactor the authentication system", "project": "assistant", "mode": "stream"}}
+    return f"""You are generating a function call for a coding task.
 
-CRITICAL: The JSON must be on its own line. Include "project" when the user mentions a specific project. Use "stream" for complex tasks or when user wants visibility. Use "quick" for simple, fast tasks.
+{projects_info}
 
-For normal conversation (weather, jokes, questions), respond naturally in 1-2 sentences without any JSON."""
+Create a function call to execute this coding task. Include:
+- acknowledgment: Brief spoken response (1 sentence)
+- prompt: Clear instruction for Claude Code
+- project: Project name if mentioned (or null)
+- mode: "quick" for simple tasks, "stream" for complex tasks or when user wants to watch
+
+Use "stream" mode when: user says "show me", "watch", "stream", or task is complex (refactoring, multi-file changes).
+Use "quick" mode for: simple fixes, running tests, quick commands."""
+
+
+# JSON schemas for structured outputs
+CLASSIFICATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "is_coding_task": {
+            "type": "boolean",
+            "description": "True if this is a coding/development task"
+        },
+        "project_mentioned": {
+            "type": "string",
+            "description": "Name of project mentioned, or null"
+        },
+        "wants_to_watch": {
+            "type": "boolean",
+            "description": "True if user wants to see output (said 'show me', 'watch', etc.)"
+        }
+    },
+    "required": ["is_coding_task"]
+}
+
+FUNCTION_CALL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "acknowledgment": {
+            "type": "string",
+            "description": "Brief spoken response (1 sentence)"
+        },
+        "prompt": {
+            "type": "string",
+            "description": "Clear instruction for Claude Code"
+        },
+        "project": {
+            "type": "string",
+            "description": "Project name if mentioned"
+        },
+        "mode": {
+            "type": "string",
+            "enum": ["quick", "stream"],
+            "description": "Execution mode"
+        }
+    },
+    "required": ["acknowledgment", "prompt", "mode"]
+}
 
 
 @app.route('/')
@@ -310,7 +349,7 @@ def index():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    """Handle chat request - send to Ollama and return response"""
+    """Handle chat request with two-pass structured output for reliable function calling"""
     try:
         data = request.get_json()
         user_message = data.get('message', '')
@@ -319,12 +358,93 @@ def chat():
         if not user_message:
             return jsonify({'error': 'No message provided'}), 400
 
-        # Build messages for Ollama
+        # PASS 1: Classify if this is a coding task using structured output
+        classification_messages = [
+            {'role': 'system', 'content': get_classification_prompt()},
+            {'role': 'user', 'content': user_message}
+        ]
+
+        classification_response = requests.post(
+            f'{OLLAMA_URL}/api/chat',
+            json={
+                'model': OLLAMA_MODEL,
+                'messages': classification_messages,
+                'stream': False,
+                'format': CLASSIFICATION_SCHEMA
+            },
+            timeout=30
+        )
+
+        is_coding_task = False
+        project_mentioned = None
+        wants_to_watch = False
+
+        if classification_response.status_code == 200:
+            try:
+                classification = classification_response.json()
+                content = classification.get('message', {}).get('content', '{}')
+                parsed = json.loads(content)
+                is_coding_task = parsed.get('is_coding_task', False)
+                project_mentioned = parsed.get('project_mentioned')
+                wants_to_watch = parsed.get('wants_to_watch', False)
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f'Classification parse error: {e}')
+                # Fall back to non-coding task handling
+
+        if is_coding_task:
+            # PASS 2: Generate structured function call
+            function_messages = [
+                {'role': 'system', 'content': get_function_call_prompt()},
+                {'role': 'user', 'content': user_message}
+            ]
+
+            function_response = requests.post(
+                f'{OLLAMA_URL}/api/chat',
+                json={
+                    'model': OLLAMA_MODEL,
+                    'messages': function_messages,
+                    'stream': False,
+                    'format': FUNCTION_CALL_SCHEMA
+                },
+                timeout=30
+            )
+
+            if function_response.status_code == 200:
+                try:
+                    result = function_response.json()
+                    content = result.get('message', {}).get('content', '{}')
+                    function_call = json.loads(content)
+
+                    # Build response with acknowledgment and JSON function call
+                    acknowledgment = function_call.get('acknowledgment', "I'll work on that.")
+                    prompt = function_call.get('prompt', user_message)
+                    project = function_call.get('project') or project_mentioned
+                    mode = function_call.get('mode', 'stream' if wants_to_watch else 'quick')
+
+                    # Format response with JSON on separate line for frontend parsing
+                    json_call = {
+                        'function': 'claude_execute',
+                        'prompt': prompt,
+                        'mode': mode
+                    }
+                    if project:
+                        json_call['project'] = project
+
+                    response_text = f"{acknowledgment}\n{json.dumps(json_call)}"
+
+                    return jsonify({
+                        'success': True,
+                        'response': response_text
+                    })
+                except (json.JSONDecodeError, KeyError) as e:
+                    print(f'Function call parse error: {e}')
+                    # Fall through to regular chat
+
+        # Regular conversation (non-coding task)
         messages = [{'role': 'system', 'content': get_system_prompt()}]
         messages.extend(conversation_history)
         messages.append({'role': 'user', 'content': user_message})
 
-        # Call Ollama API
         response = requests.post(
             f'{OLLAMA_URL}/api/chat',
             json={
