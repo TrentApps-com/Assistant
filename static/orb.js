@@ -246,69 +246,88 @@ class NeonOrb {
                     float dist = length(position);
                     vDist = dist;
 
-                    // === AUDIO-REACTIVE STIRRING ===
-                    // Base rotation speed increases dramatically with audio
-                    float baseSpeed = 0.3;
-                    float activeSpeed = baseSpeed + uAudioLevel * 2.5; // Much faster when active
+                    // === ORGANIC FLOW FIELD ===
+                    // Each particle follows its own unique flow path based on noise
+                    // NOT rigid rotation - particles drift independently
 
-                    // Swirl angle - faster rotation when audio is present
-                    float angle = uTime * activeSpeed + phase;
-                    float r = length(position.xz);
-                    float swirl = angle + r * (2.0 + uAudioLevel * 4.0) + layer * 2.0;
+                    float timeScale = 0.2 + uAudioLevel * 0.8;
+                    float t = uTime * timeScale;
 
-                    // Primary rotation - speed scales with audio
-                    float rotSpeed1 = 0.2 + uAudioLevel * 0.8;
-                    float s1 = sin(swirl * rotSpeed1);
-                    float c1 = cos(swirl * rotSpeed1);
-                    pos.xz = mat2(c1, -s1, s1, c1) * pos.xz;
+                    // Sample 3D noise field at particle position for flow direction
+                    // This creates organic, fluid-like motion
+                    vec3 samplePos = position * 2.0 + t * 0.3;
+                    float nx = fbm(samplePos + vec3(0.0, 0.0, 0.0));
+                    float ny = fbm(samplePos + vec3(31.416, 0.0, 0.0));
+                    float nz = fbm(samplePos + vec3(0.0, 31.416, 0.0));
 
-                    // Secondary rotation on different axis - creates tumbling
-                    float rotSpeed2 = 0.15 + uAudioLevel * 0.6;
-                    float s2 = sin(swirl * rotSpeed2 + 1.57);
-                    float c2 = cos(swirl * rotSpeed2 + 1.57);
-                    pos.xy = mat2(c2, -s2, s2, c2) * pos.xy;
+                    // Flow vector - particles drift in direction of noise gradient
+                    vec3 flow = vec3(nx - 0.5, ny - 0.5, nz - 0.5);
 
-                    // Third axis rotation for full 3D stirring when active
-                    float rotSpeed3 = uAudioLevel * 0.5;
-                    float s3 = sin(uTime * 1.5 + phase * 2.0);
-                    float c3 = cos(uTime * 1.5 + phase * 2.0);
-                    pos.yz = mat2(c3, -s3 * rotSpeed3, s3 * rotSpeed3, c3) * pos.yz;
+                    // Curl-like motion: particles spiral around noise features
+                    // Cross product with position creates orbiting effect
+                    vec3 curl = cross(normalize(pos + vec3(0.001)), flow);
 
-                    // === OUTWARD EXPANSION when active ===
-                    // Particles push outward from center based on audio
-                    float expansion = 1.0 + uAudioLevel * 0.4; // Expand cloud radius
-                    // Inner particles expand more than outer ones (creates stirring effect)
-                    float innerExpansion = (1.0 - dist) * uAudioLevel * 0.3;
-                    pos *= expansion + innerExpansion;
+                    // Movement intensity based on audio
+                    float flowStrength = 0.15 + uAudioLevel * 0.5;
+                    float curlStrength = 0.1 + uAudioLevel * 0.4;
 
-                    // === ORBITAL DRIFT ===
-                    // Particles drift in elliptical paths when active
-                    float orbitPhase = uTime * (0.5 + uAudioLevel * 2.0) + phase * 6.28;
-                    float orbitRadius = 0.05 + uAudioLevel * 0.15;
-                    pos.x += sin(orbitPhase) * orbitRadius * (1.0 - layer);
-                    pos.z += cos(orbitPhase * 1.3) * orbitRadius * (1.0 - layer);
-                    pos.y += sin(orbitPhase * 0.7 + phase) * orbitRadius * 0.5;
+                    // Apply organic drift - each particle moves uniquely
+                    pos += flow * flowStrength * (0.5 + phase);
+                    pos += curl * curlStrength * (0.3 + layer);
 
-                    // === TURBULENT DISPLACEMENT ===
-                    // More chaotic displacement when audio is high
-                    float turbulenceStrength = 0.1 + uAudioLevel * 0.4;
-                    vec3 noisePos = pos * 3.0 + uTime * (0.3 + uAudioLevel * 1.5);
-                    float n = fbm(noisePos);
-                    vec3 displacement = normalize(pos + vec3(0.001)) * (n - 0.5) * turbulenceStrength;
-                    pos += displacement;
+                    // === BREATHING EXPANSION ===
+                    // Gentle radial pulsing, not uniform scaling
+                    float breathPhase = t * 2.0 + phase * 6.28 + dist * 3.0;
+                    float breathe = sin(breathPhase) * 0.08 * (0.5 + uAudioLevel);
+                    pos += normalize(pos + vec3(0.001)) * breathe;
 
-                    // Subtle vertical wave
-                    pos.y += sin(uTime * 1.5 + phase * 4.0 + dist * 5.0) * 0.03;
+                    // === INDIVIDUAL ORBITAL PATHS ===
+                    // Each particle has unique elliptical wobble
+                    float orbitSpeed = 0.3 + phase * 0.4 + uAudioLevel * 1.5;
+                    float orbitPhase = t * orbitSpeed + phase * 6.28;
+                    float orbitSize = 0.03 + uAudioLevel * 0.12;
+
+                    // Vary orbit plane per particle using phase
+                    float ox = sin(orbitPhase) * orbitSize;
+                    float oy = sin(orbitPhase * 1.3 + phase * 2.0) * orbitSize * 0.7;
+                    float oz = cos(orbitPhase * 0.8 + phase) * orbitSize;
+
+                    pos.x += ox * cos(phase * 3.14);
+                    pos.y += oy;
+                    pos.z += oz * sin(phase * 3.14);
+
+                    // === VORTEX CURRENTS ===
+                    // Create swirling vortex streams, not rigid rotation
+                    float vortexStrength = uAudioLevel * 0.15;
+                    float vortexAngle = atan(pos.z, pos.x);
+                    float vortexRadius = length(pos.xz);
+                    // Particles at different radii rotate at different speeds (shear)
+                    float shear = (0.5 - dist) * vortexStrength;
+                    vortexAngle += shear * sin(t * 2.0 + phase);
+                    pos.x = cos(vortexAngle) * vortexRadius + pos.x * 0.0;
+                    pos.z = sin(vortexAngle) * vortexRadius + pos.z * 0.0;
+                    // Restore with blend for subtlety
+                    pos.x = mix(position.x + flow.x * flowStrength, pos.x, 0.3 + uAudioLevel * 0.4);
+                    pos.z = mix(position.z + flow.z * flowStrength, pos.z, 0.3 + uAudioLevel * 0.4);
+                    pos.y = position.y + flow.y * flowStrength + oy + breathe * normalize(position).y;
+
+                    // === FINE TURBULENCE ===
+                    // Small-scale jitter for organic feel
+                    float jitter = 0.02 + uAudioLevel * 0.06;
+                    pos.x += (noise(pos * 8.0 + t * 2.0) - 0.5) * jitter;
+                    pos.y += (noise(pos * 8.0 + t * 2.0 + 50.0) - 0.5) * jitter;
+                    pos.z += (noise(pos * 8.0 + t * 2.0 + 100.0) - 0.5) * jitter;
 
                     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
-                    // Size - slightly smaller when expanded to maintain density look
-                    float sizeMultiplier = 1.0 + (1.0 - dist) * 0.6;
+                    // Size varies organically
+                    float sizeMultiplier = 0.8 + (1.0 - dist) * 0.5;
                     sizeMultiplier *= 0.7 + layer * 0.5;
+                    sizeMultiplier += uAudioLevel * 0.2;
                     gl_PointSize = size * (260.0 / -mvPosition.z) * sizeMultiplier;
 
                     // Alpha - brighter when active
-                    vAlpha = 0.5 + uAudioLevel * 0.4;
+                    vAlpha = 0.5 + uAudioLevel * 0.35;
                     vAlpha *= 0.6 + (1.0 - dist) * 0.5;
 
                     gl_Position = projectionMatrix * mvPosition;
@@ -402,41 +421,58 @@ class NeonOrb {
                 uniform float uTime;
                 uniform float uAudioLevel;
 
+                // Simple noise for detail particles
+                float hash(vec3 p) {
+                    p = fract(p * 0.3183099 + vec3(0.1, 0.1, 0.1));
+                    p *= 17.0;
+                    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+                }
+
+                float noise(vec3 p) {
+                    vec3 i = floor(p);
+                    vec3 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    return mix(
+                        mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+                            mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                        mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                            mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+                }
+
                 void main() {
                     vec3 pos = position;
+                    float t = uTime * (0.3 + uAudioLevel * 1.2);
 
-                    // === CHAOTIC STIRRING - faster and more intense than main cloud ===
-                    float activeSpeed = 0.6 + uAudioLevel * 3.0;
-                    float angle = uTime * activeSpeed + phase * 2.0;
+                    // === ORGANIC FLOW - detail particles flow faster/more chaotic ===
+                    vec3 samplePos = position * 3.0 + t * 0.5;
+                    float nx = noise(samplePos);
+                    float ny = noise(samplePos + vec3(17.0, 0.0, 0.0));
+                    float nz = noise(samplePos + vec3(0.0, 17.0, 0.0));
 
-                    // Multi-axis rotation for chaotic tumbling
-                    float s = sin(angle * 0.4);
-                    float c = cos(angle * 0.4);
-                    pos.xz = mat2(c, -s, s, c) * pos.xz;
+                    vec3 flow = vec3(nx - 0.5, ny - 0.5, nz - 0.5);
+                    float flowStrength = 0.2 + uAudioLevel * 0.6;
 
-                    float s2 = sin(angle * 0.3 + 1.0);
-                    float c2 = cos(angle * 0.3 + 1.0);
-                    pos.yz = mat2(c2, s2, -s2, c2) * pos.yz;
+                    pos += flow * flowStrength * (0.5 + phase);
 
-                    // Third axis when active
-                    float s3 = sin(uTime * 2.0 + phase);
-                    float c3 = cos(uTime * 2.0 + phase);
-                    pos.xy = mat2(c3, -s3 * uAudioLevel, s3 * uAudioLevel, c3) * pos.xy;
+                    // Individual wobble paths
+                    float wobbleSpeed = 0.5 + phase * 0.5 + uAudioLevel * 2.0;
+                    float wobblePhase = t * wobbleSpeed + phase * 6.28;
+                    float wobbleSize = 0.04 + uAudioLevel * 0.15;
 
-                    // Expansion outward
-                    float expansion = 1.0 + uAudioLevel * 0.5;
-                    pos *= expansion;
+                    pos.x += sin(wobblePhase) * wobbleSize * cos(phase * 3.14);
+                    pos.y += sin(wobblePhase * 1.4 + phase) * wobbleSize * 0.6;
+                    pos.z += cos(wobblePhase * 0.9) * wobbleSize * sin(phase * 3.14);
 
-                    // Orbital wobble
-                    float orbitPhase = uTime * (1.0 + uAudioLevel * 3.0) + phase * 6.28;
-                    pos.x += sin(orbitPhase) * 0.08 * uAudioLevel;
-                    pos.z += cos(orbitPhase * 1.5) * 0.08 * uAudioLevel;
-                    pos.y += sin(orbitPhase * 0.8) * 0.05 * uAudioLevel;
+                    // Fine jitter
+                    float jitter = 0.03 + uAudioLevel * 0.08;
+                    pos += (vec3(noise(pos * 10.0 + t * 3.0),
+                                 noise(pos * 10.0 + t * 3.0 + 50.0),
+                                 noise(pos * 10.0 + t * 3.0 + 100.0)) - 0.5) * jitter;
 
                     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
                     gl_PointSize = size * (180.0 / -mvPosition.z);
 
-                    vAlpha = 0.35 + uAudioLevel * 0.35;
+                    vAlpha = 0.35 + uAudioLevel * 0.3;
                     gl_Position = projectionMatrix * mvPosition;
                 }
             `,
@@ -786,23 +822,18 @@ class NeonOrb {
             this.aura.rotation.z = time * 0.5;
         }
 
-        // ===== STATE-SPECIFIC BASE ROTATION =====
-        // Shaders handle the stirring/expansion via uAudioLevel
-        // Just add gentle base rotation here for variety
+        // ===== MOUSE INTERACTION =====
+        // Shaders handle all organic flow - just subtle mouse tilt here
         if (this.innerCloud) {
-            // Thinking state gets faster base rotation
-            if (this.state === 'thinking') {
-                this.innerCloud.rotation.y = time * 0.3;
-            }
-            // Mouse interaction - subtle follow
-            this.innerCloud.rotation.x += this.mouse.y * 0.008;
-            this.innerCloud.rotation.y += this.mouse.x * 0.008;
+            // Very subtle camera-like tilt, not rotation
+            this.innerCloud.rotation.x = this.mouse.y * 0.1;
+            this.innerCloud.rotation.z = this.mouse.x * -0.05;
         }
 
         if (this.detailCloud) {
-            // Counter-rotate detail cloud for depth
-            this.detailCloud.rotation.x += this.mouse.y * -0.005;
-            this.detailCloud.rotation.z += this.mouse.x * 0.005;
+            // Slightly different tilt for parallax depth
+            this.detailCloud.rotation.x = this.mouse.y * 0.08;
+            this.detailCloud.rotation.z = this.mouse.x * -0.04;
         }
 
         this.renderer.render(this.scene, this.camera);
