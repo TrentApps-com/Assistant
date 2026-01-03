@@ -419,12 +419,14 @@ function updateMuteButtonVisual() {
 }
 
 // Toggle microphone mute - completely stops all mic input when muted
+// Does NOT interrupt ongoing AI processing or speaking
 function toggleMute() {
     state.isMuted = !state.isMuted;
     updateMuteButtonVisual();
 
     if (state.isMuted) {
         // MUTED - completely stop all microphone usage
+        // But DON'T interrupt ongoing AI processing or speaking
 
         // Stop speech recognition
         if (state.recognition) {
@@ -449,28 +451,35 @@ function toggleMute() {
             waveformAnalyser = null;
         }
 
-        // Clear any pending timers
+        // Clear listening timers but NOT processing
         clearTimeout(state.silenceTimer);
         clearTimeout(state.thinkingTimer);
 
-        // Show muted state but keep orb in idle
-        setAvatarState('idle');
-        showCurrentText('Microphone muted', true);
+        // Only change display if not currently processing/speaking
+        if (!state.isProcessing && !state.isSpeaking) {
+            setAvatarState('idle');
+            showCurrentText('Microphone muted', true);
+        }
+        // If processing/speaking, let it continue - just mic is off
 
     } else {
         // UNMUTED - re-acquire microphone if voice mode is active
-        if (state.isActive && !state.isSpeaking && !state.isProcessing) {
-            // Re-request microphone access
-            navigator.mediaDevices.getUserMedia({ audio: true })
-                .then(stream => {
-                    waveformAudioStream = stream;
-                    startIdleWaveform();
-                    startListening();
-                })
-                .catch(err => {
-                    console.error('Failed to re-acquire microphone:', err);
-                    showCurrentText('Microphone access denied');
-                });
+        // Wait until AI is done speaking/processing before listening again
+        if (state.isActive) {
+            if (!state.isSpeaking && !state.isProcessing) {
+                // Re-request microphone access immediately
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => {
+                        waveformAudioStream = stream;
+                        startIdleWaveform();
+                        startListening();
+                    })
+                    .catch(err => {
+                        console.error('Failed to re-acquire microphone:', err);
+                        showCurrentText('Microphone access denied');
+                    });
+            }
+            // If speaking/processing, mic will be acquired when AI finishes
         }
     }
 }
@@ -689,9 +698,13 @@ async function processTranscript() {
         console.error('Processing error:', error);
         showCurrentText('Failed to get response');
         state.isProcessing = false;
-        // Restart listening after error
-        if (state.isActive) {
+
+        // Restart listening after error (respecting mute state)
+        if (state.isActive && !state.isMuted) {
             setTimeout(() => startListening(), VOICE_CONFIG.POST_AI_SPEECH_DELAY);
+        } else if (state.isMuted) {
+            setAvatarState('idle');
+            showCurrentText('Microphone muted', true);
         }
     }
 }
@@ -730,10 +743,29 @@ async function speakResponse(text) {
         await browserSpeak(text);
     } finally {
         state.isSpeaking = false;
-        startIdleWaveform();
-        // Auto-restart listening after speaking
-        if (state.isActive) {
-            setTimeout(() => startListening(), VOICE_CONFIG.POST_AI_SPEECH_DELAY);
+
+        // Only restart mic-related things if not muted
+        if (!state.isMuted) {
+            startIdleWaveform();
+            // Auto-restart listening after speaking
+            if (state.isActive) {
+                // Re-acquire mic if it was released
+                if (!waveformAudioStream) {
+                    navigator.mediaDevices.getUserMedia({ audio: true })
+                        .then(stream => {
+                            waveformAudioStream = stream;
+                            startIdleWaveform();
+                            setTimeout(() => startListening(), VOICE_CONFIG.POST_AI_SPEECH_DELAY);
+                        })
+                        .catch(err => console.error('Failed to re-acquire mic:', err));
+                } else {
+                    setTimeout(() => startListening(), VOICE_CONFIG.POST_AI_SPEECH_DELAY);
+                }
+            }
+        } else {
+            // Muted - just show muted state
+            setAvatarState('idle');
+            showCurrentText('Microphone muted', true);
         }
     }
 }
