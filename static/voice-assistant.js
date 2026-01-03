@@ -540,10 +540,8 @@ function stopWaveformVisualization() {
     }
     // Don't close AudioContext - we want to reuse it for future audio
     // Closing it prevents mobile audio from working on subsequent plays
-    if (waveformAudioStream) {
-        waveformAudioStream.getTracks().forEach(track => track.stop());
-        waveformAudioStream = null;
-    }
+    // NOTE: Don't release stream here - let releaseMicrophoneStream() handle it
+    // Double-release causes mobile browsers to fail on rapid mic re-acquisition
     const canvas = elements.voiceWaveform;
     if (canvas) {
         const ctx = canvas.getContext('2d');
@@ -571,7 +569,12 @@ function pauseWaveformVisualization() {
 // Release microphone stream
 function releaseMicrophoneStream() {
     if (waveformAudioStream) {
-        waveformAudioStream.getTracks().forEach(track => track.stop());
+        waveformAudioStream.getTracks().forEach(track => {
+            // Only stop tracks that aren't already ended
+            if (track.readyState !== 'ended') {
+                track.stop();
+            }
+        });
         waveformAudioStream = null;
     }
 }
@@ -625,10 +628,7 @@ function toggleMute() {
         state.isListening = false;
 
         // Stop and release the microphone audio stream
-        if (waveformAudioStream) {
-            waveformAudioStream.getTracks().forEach(track => track.stop());
-            waveformAudioStream = null;
-        }
+        releaseMicrophoneStream();
 
         // Clear listening timers but NOT processing
         clearTimeout(state.silenceTimer);
