@@ -31,9 +31,33 @@ KOKORO_VOICE = os.environ.get('KOKORO_VOICE', 'af_heart')
 AUTH_PASSWORD = os.environ.get('ASSISTANT_PASSWORD', 'yellowbravo#6!')
 
 # WebAuthn/Passkey configuration
-PASSKEY_RP_ID = os.environ.get('PASSKEY_RP_ID', '192.168.1.67')  # Relying Party ID (domain)
+# NOTE: Passkeys require a valid domain (not IP addresses). For local use:
+# 1. Add "127.0.0.1 assistant.local" to /etc/hosts (Linux/Mac) or C:\Windows\System32\drivers\etc\hosts (Windows)
+# 2. Access the app via https://assistant.local:5566
+# OR set these environment variables to match your domain
 PASSKEY_RP_NAME = os.environ.get('PASSKEY_RP_NAME', 'Voice Assistant')
-PASSKEY_ORIGIN = os.environ.get('PASSKEY_ORIGIN', 'https://192.168.1.67:5566')
+
+def get_passkey_rp_id():
+    """Get RP ID from environment or request host"""
+    env_rp_id = os.environ.get('PASSKEY_RP_ID')
+    if env_rp_id:
+        return env_rp_id
+    # Try to get from request
+    try:
+        host = request.host.split(':')[0]  # Remove port
+        return host
+    except:
+        return 'localhost'
+
+def get_passkey_origin():
+    """Get origin from environment or request"""
+    env_origin = os.environ.get('PASSKEY_ORIGIN')
+    if env_origin:
+        return env_origin
+    try:
+        return request.url_root.rstrip('/')
+    except:
+        return 'https://localhost:5566'
 
 # Passkey storage (persisted to file)
 PASSKEYS_FILE = os.path.join(os.path.dirname(__file__), 'passkeys.json')
@@ -456,7 +480,7 @@ def passkey_register_options():
             'challenge_id': challenge_id,
             'rp': {
                 'name': PASSKEY_RP_NAME,
-                'id': PASSKEY_RP_ID
+                'id': get_passkey_rp_id()
             },
             'user': {
                 'id': user_id,

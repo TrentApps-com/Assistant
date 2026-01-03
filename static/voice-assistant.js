@@ -44,6 +44,10 @@ let waveformAudioContext = null;
 let waveformAnalyser = null;
 let waveformAudioStream = null;
 
+// Mobile audio context (needs to be created on user gesture)
+let mobileAudioContext = null;
+let mobileAudioUnlocked = false;
+
 // Multiple curves with different attenuation (Siri-style)
 const curves = [
     { attenuation: -3, opacity: 0.25, lineWidth: 1.5 },
@@ -442,6 +446,9 @@ function releaseMicrophoneStream() {
 
 // Toggle voice mode on/off
 async function toggleVoiceMode() {
+    // Unlock mobile audio on first interaction
+    await unlockMobileAudio();
+
     if (state.isActive) {
         stopVoiceMode();
     } else {
@@ -822,27 +829,89 @@ async function speakResponse(text) {
 }
 
 function playAudio(base64Data) {
-    return new Promise((resolve) => {
-        const audio = new Audio(`data:audio/mp3;base64,${base64Data}`);
-        state.aiAudio = audio;
-        audio.volume = 1.0;
+    return new Promise(async (resolve) => {
+        try {
+            // Ensure audio context is unlocked on mobile
+            await unlockMobileAudio();
 
-        audio.onplay = () => {
-            startSpeakingWaveform(audio);
-        };
+            // Convert base64 to blob for better mobile compatibility
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'audio/mp3' });
+            const audioUrl = URL.createObjectURL(blob);
 
-        audio.onended = () => {
-            state.aiAudio = null;
+            const audio = new Audio(audioUrl);
+            state.aiAudio = audio;
+            audio.volume = 1.0;
+
+            // Mobile-specific: load before playing
+            audio.preload = 'auto';
+
+            audio.onplay = () => {
+                startSpeakingWaveform(audio);
+            };
+
+            audio.onended = () => {
+                state.aiAudio = null;
+                URL.revokeObjectURL(audioUrl);
+                resolve();
+            };
+
+            audio.onerror = (e) => {
+                console.error('Audio playback error:', e);
+                state.aiAudio = null;
+                URL.revokeObjectURL(audioUrl);
+                resolve();
+            };
+
+            // Load and play with mobile-friendly approach
+            audio.load();
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch((error) => {
+                    console.error('Audio play failed:', error);
+                    URL.revokeObjectURL(audioUrl);
+                    resolve();
+                });
+            }
+        } catch (error) {
+            console.error('Audio playback error:', error);
             resolve();
-        };
-
-        audio.onerror = () => {
-            state.aiAudio = null;
-            resolve();
-        };
-
-        audio.play().catch(() => resolve());
+        }
     });
+}
+
+// Unlock audio on mobile devices (must be called from user gesture)
+async function unlockMobileAudio() {
+    if (mobileAudioUnlocked) return;
+
+    try {
+        // Create audio context if needed
+        if (!mobileAudioContext) {
+            mobileAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        // Resume if suspended (common on mobile)
+        if (mobileAudioContext.state === 'suspended') {
+            await mobileAudioContext.resume();
+        }
+
+        // Play silent audio to unlock
+        const silentBuffer = mobileAudioContext.createBuffer(1, 1, 22050);
+        const source = mobileAudioContext.createBufferSource();
+        source.buffer = silentBuffer;
+        source.connect(mobileAudioContext.destination);
+        source.start(0);
+
+        mobileAudioUnlocked = true;
+        console.log('Mobile audio unlocked');
+    } catch (e) {
+        console.warn('Failed to unlock mobile audio:', e);
+    }
 }
 
 function fadeOutAudio() {
