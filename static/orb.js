@@ -766,40 +766,68 @@ class NeonOrb {
 
         const time = this.clock.getElapsedTime();
 
-        // Smooth audio level transition
+        // Smooth audio level transition - slower for organic feel
         const targetAudio = this.audioLevel;
         if (!this._smoothedAudio) this._smoothedAudio = 0;
-        this._smoothedAudio += (targetAudio - this._smoothedAudio) * 0.1;
+        this._smoothedAudio += (targetAudio - this._smoothedAudio) * 0.08;
         const smoothedAudio = this._smoothedAudio;
+
+        // === SMOOTH GLOBAL BREATHING SCALE ===
+        // Entire orb breathes in and out with audio
+        const baseBreath = Math.sin(time * 1.5) * 0.03; // Gentle idle breathing
+        const audioBreath = smoothedAudio * 0.15; // Expand with sound
+        const globalScale = 1.0 + baseBreath + audioBreath;
 
         // ===== UPDATE INNER PARTICLE CLOUD =====
         if (this.innerCloud && this.innerCloudMaterial) {
             this.innerCloudMaterial.uniforms.uTime.value = time;
             this.innerCloudMaterial.uniforms.uAudioLevel.value = smoothedAudio;
-            this.innerCloud.rotation.y = time * 0.15;
-            this.innerCloud.rotation.x = Math.sin(time * 0.3) * 0.1;
+
+            // Smooth scale breathing - NO rotation, let shader handle flow
+            this.innerCloud.scale.setScalar(globalScale);
+
+            // Only subtle mouse tilt, no constant rotation
+            this.innerCloud.rotation.x = this.mouse.y * 0.08;
+            this.innerCloud.rotation.z = this.mouse.x * -0.04;
         }
 
         // ===== UPDATE DETAIL PARTICLE CLOUD =====
         if (this.detailCloud && this.detailCloudMaterial) {
             this.detailCloudMaterial.uniforms.uTime.value = time;
             this.detailCloudMaterial.uniforms.uAudioLevel.value = smoothedAudio;
-            this.detailCloud.rotation.y = -time * 0.2;
-            this.detailCloud.rotation.z = time * 0.1;
+
+            // Slightly different breathing phase for depth
+            const detailBreath = Math.sin(time * 1.5 + 0.5) * 0.025;
+            const detailScale = 1.0 + detailBreath + audioBreath * 0.9;
+            this.detailCloud.scale.setScalar(detailScale);
+
+            // Subtle parallax tilt only
+            this.detailCloud.rotation.x = this.mouse.y * 0.06;
+            this.detailCloud.rotation.z = this.mouse.x * -0.03;
         }
 
         // ===== UPDATE CENTRAL CORE POINT =====
         if (this.corePoint && this.coreMaterial) {
             this.coreMaterial.uniforms.uTime.value = time;
             this.coreMaterial.uniforms.uAudioLevel.value = smoothedAudio;
+
+            // Core breathes more dramatically
+            const coreBreath = Math.sin(time * 2.0) * 0.05;
+            const coreScale = 1.0 + coreBreath + audioBreath * 1.2;
+            this.corePoint.scale.setScalar(coreScale);
         }
 
         // ===== UPDATE EDGE RING =====
         if (this.edgeRing && this.edgeRing.material) {
             this.edgeRing.material.uniforms.uTime.value = time;
             this.edgeRing.material.uniforms.uAudioLevel.value = smoothedAudio;
-            this.edgeRing.rotation.y = time * 0.1;
-            this.edgeRing.rotation.x = Math.sin(time * 0.5) * 0.05;
+
+            // Edge ring breathes with the orb
+            const edgeScale = 1.0 + baseBreath * 0.5 + audioBreath * 0.8;
+            this.edgeRing.scale.setScalar(edgeScale);
+
+            // Very slow, subtle rotation for shimmer effect only
+            this.edgeRing.rotation.y = time * 0.05;
         }
 
         // ===== UPDATE OUTER PARTICLES =====
@@ -810,30 +838,25 @@ class NeonOrb {
 
         // ===== UPDATE OUTER GLOW =====
         if (this.glow && this.glow.material) {
-            const glowIntensity = 0.5 + Math.sin(time * 2) * 0.15 + smoothedAudio * 0.4;
+            const glowIntensity = 0.5 + Math.sin(time * 1.5) * 0.1 + smoothedAudio * 0.5;
             this.glow.material.uniforms.uIntensity.value = glowIntensity;
             this.glow.material.uniforms.uTime.value = time;
             this.glow.material.uniforms.uAudioLevel.value = smoothedAudio;
+
+            // Glow expands smoothly with audio
+            const glowScale = 1.0 + baseBreath * 0.8 + audioBreath * 1.3;
+            this.glow.scale.setScalar(glowScale);
         }
 
         // ===== UPDATE AURA RING =====
         if (this.aura && this.aura.material) {
             this.aura.material.uniforms.uTime.value = time;
-            this.aura.rotation.z = time * 0.5;
-        }
+            // Very slow rotation for subtle effect
+            this.aura.rotation.z = time * 0.2;
 
-        // ===== MOUSE INTERACTION =====
-        // Shaders handle all organic flow - just subtle mouse tilt here
-        if (this.innerCloud) {
-            // Very subtle camera-like tilt, not rotation
-            this.innerCloud.rotation.x = this.mouse.y * 0.1;
-            this.innerCloud.rotation.z = this.mouse.x * -0.05;
-        }
-
-        if (this.detailCloud) {
-            // Slightly different tilt for parallax depth
-            this.detailCloud.rotation.x = this.mouse.y * 0.08;
-            this.detailCloud.rotation.z = this.mouse.x * -0.04;
+            // Aura pulses outward with audio
+            const auraScale = 1.0 + smoothedAudio * 0.2;
+            this.aura.scale.setScalar(auraScale);
         }
 
         this.renderer.render(this.scene, this.camera);
